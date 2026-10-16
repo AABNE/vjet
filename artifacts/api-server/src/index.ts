@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/init-db";
+import { startRouteScheduler } from "./lib/route-scheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -24,5 +25,9 @@ initDb().then(() => {
     }
 
     logger.info({ port }, "Server listening");
+
+    // Keep a rolling pool of random routes topped up, and prune routes
+    // 30 minutes before departure.
+    startRouteScheduler();
   });
 });

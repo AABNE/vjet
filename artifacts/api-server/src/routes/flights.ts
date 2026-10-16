@@ -1,13 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db, flightsTable, timetableTable, usersTable, eq, inArray } from "@workspace/db";
 import { GetAvailableFlightsResponse } from "@workspace/api-zod";
+import { isAvailableAt } from "../lib/route-scheduler";
 
 const router: IRouter = Router();
-
-function nowMinutes(): number {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
-}
 
 router.get("/flights", async (req, res): Promise<void> => {
   if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
@@ -29,19 +25,12 @@ router.get("/flights", async (req, res): Promise<void> => {
     takenEntries.filter(e => e.status !== "completed").map(e => e.flightId)
   );
 
-  const currentMins = nowMinutes();
+  const now = new Date();
 
   const available = allFlights.filter(f => {
     if (takenFlightIds.has(f.id)) return false;
-
-    // Parse HH:MM departure time
-    const parts = f.departureTime.split(":");
-    const depHour = parseInt(parts[0] ?? "0", 10);
-    const depMin = parseInt(parts[1] ?? "0", 10);
-    const depMins = depHour * 60 + depMin;
-
-    // Remove 30 minutes before scheduled departure
-    return depMins - currentMins > 30;
+    // Hide routes within 30 minutes of (or past) their scheduled UTC departure.
+    return isAvailableAt(f.flightDate, f.departureTime, now);
   });
 
   res.json(GetAvailableFlightsResponse.parse(
