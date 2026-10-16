@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/init-db";
 import { startRouteScheduler } from "./lib/route-scheduler";
+import { startSelfKeepalive } from "./lib/keepalive";
 
 const rawPort = process.env["PORT"];
 
@@ -29,5 +30,9 @@ initDb().then(() => {
     // Keep a rolling pool of random routes topped up, and prune routes
     // 30 minutes before departure.
     startRouteScheduler();
+
+    // Keep the free-tier instance warm so Discord interactions (Accept/Decline)
+    // hit a running server within Discord's 3-second window.
+    startSelfKeepalive();
   });
 });

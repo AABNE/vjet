@@ -19,6 +19,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "node:crypto";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -287,11 +288,19 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
   const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
 
   if (!verifyDiscordSignature(rawBody, signature, timestamp, publicKey)) {
+    logger.warn(
+      { hasSig: !!signature, hasTs: !!timestamp, hasRawBody: !!req.rawBody, rawLen: rawBody.length },
+      "discord-interactions: signature verification failed",
+    );
     res.status(401).json({ error: "Invalid Discord request signature." });
     return;
   }
 
   const interaction = req.body ?? {};
+  logger.info(
+    { type: interaction.type, customId: interaction.data?.custom_id },
+    "discord-interactions: handling",
+  );
 
   // PING
   if (interaction.type === 1) {
