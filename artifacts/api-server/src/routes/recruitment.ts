@@ -43,6 +43,36 @@ function botHeaders(token: string): Record<string, string> {
   };
 }
 
+// Add ("PUT") or remove ("DELETE") a guild role from a member, logging the
+// result. Discord returns 204 on success, 403 if the bot's own role sits below
+// the target role (hierarchy), 404 if the member or role no longer exists.
+async function changeMemberRole(
+  token: string,
+  guildId: string,
+  memberId: string,
+  roleId: string,
+  method: "PUT" | "DELETE",
+  label: string,
+): Promise<void> {
+  try {
+    const r = await fetch(
+      `${DISCORD_API}/guilds/${guildId}/members/${memberId}/roles/${roleId}`,
+      { method, headers: botHeaders(token) },
+    );
+    if (r.ok) {
+      logger.info({ status: r.status, roleId, label }, "role change ok");
+    } else {
+      const body = await r.text().catch(() => "");
+      logger.warn(
+        { status: r.status, roleId, label, body: body.slice(0, 200) },
+        "role change failed — check the bot can manage this role (its role must be ABOVE the target role)",
+      );
+    }
+  } catch (err) {
+    logger.error({ err, roleId, label }, "role change error");
+  }
+}
+
 function escapeDiscord(value: unknown): string {
   return String(value).replace(/[`@*_~|><[\]]/g, "\\$&").slice(0, 500);
 }
@@ -375,16 +405,13 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
       },
     });
 
-    // Background role swap (response already sent)
+    // Background role swap (response already sent): accepted -> pilot.
     if (guildId) {
-      const base = `${DISCORD_API}/guilds/${guildId}/members/${applicantId}/roles`;
       const accepted = process.env["ROLE_ACCEPTED_ID"];
       const pilot = process.env["ROLE_PILOT_ID"];
       void (async () => {
-        try {
-          if (accepted) await fetch(`${base}/${accepted}`, { method: "DELETE", headers: botHeaders(token) });
-          if (pilot) await fetch(`${base}/${pilot}`, { method: "PUT", headers: botHeaders(token) });
-        } catch { /* best-effort */ }
+        if (accepted) await changeMemberRole(token, guildId, applicantId, accepted, "DELETE", "remove accepted");
+        if (pilot) await changeMemberRole(token, guildId, applicantId, pilot, "PUT", "add pilot");
       })();
     }
     return;
@@ -530,13 +557,15 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
     } catch { /* best-effort */ }
 
     if (guildId) {
-      const base = `${DISCORD_API}/guilds/${guildId}/members/${applicantId}/roles`;
       const noApp = process.env["ROLE_NO_APPLICATION_ID"];
       const accepted = process.env["ROLE_ACCEPTED_ID"];
-      try {
-        if (noApp) await fetch(`${base}/${noApp}`, { method: "DELETE", headers: botHeaders(token) });
-        if (accepted) await fetch(`${base}/${accepted}`, { method: "PUT", headers: botHeaders(token) });
-      } catch { /* best-effort */ }
+      // Remove the "no application yet" role on accept, then add the accepted role.
+      if (noApp) {
+        await changeMemberRole(token, guildId, applicantId, noApp, "DELETE", "remove no-application");
+      } else {
+        logger.warn("accept: ROLE_NO_APPLICATION_ID not set — cannot remove the 'no application yet' role");
+      }
+      if (accepted) await changeMemberRole(token, guildId, applicantId, accepted, "PUT", "add accepted");
     }
   })();
 });
