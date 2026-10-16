@@ -9,7 +9,9 @@ services:
     runtime: node
     plan: free
     buildCommand: pnpm install --frozen-lockfile && pnpm run build
-    startCommand: node artifacts/api-server/dist/index.mjs
+    # Runs the root "start" script (node artifacts/api-server/dist/index.mjs).
+    # Using the script keeps the real path in the repo, not the dashboard field.
+    startCommand: pnpm start
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
