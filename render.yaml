@@ -1,0 +1,57 @@
+services:
+  # ── Combined vJetstar app: pilot hub (SPA + API) + pilot application site ──
+  # Serves:
+  #   /         → Jetstar Virtual Ops pilot hub (React SPA)
+  #   /apply    → pilot recruitment application site
+  #   /api/*    → Express API (hub + recruitment: apply, discord-user, discord-interactions)
+  - type: web
+    name: vjet
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    startCommand: node artifacts/api-server/dist/index.mjs
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Pilot hub
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      # Pilot application site / Discord integration (optional — routes return a
+      # "not configured" 503 until these are set, so the app still boots without them)
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_USER_ID
+        sync: false
+      - key: DISCORD_PUBLIC_KEY
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: ROLE_NO_APPLICATION_ID
+        sync: false
+      - key: ROLE_ACCEPTED_ID
+        sync: false
+      - key: ROLE_PILOT_ID
+        sync: false
+
+  # Keep-alive: pings the health endpoint every 14 minutes so the free-tier web
+  # service doesn't spin down. Update the URL if your service URL isn't vjet.onrender.com.
+  - type: cron
+    name: vjet-keepalive
+    runtime: node
+    plan: free
+    buildCommand: echo "keepalive"
+    startCommand: >-
+      node -e "fetch(process.env.KEEPALIVE_URL||'https://vjet.onrender.com/api/healthz').then(r=>r.json()).then(d=>console.log('ping ok',d)).catch(e=>console.error('ping failed',e))"
+    schedule: "*/14 * * * *"
+    envVars:
+      - key: KEEPALIVE_URL
+        sync: false

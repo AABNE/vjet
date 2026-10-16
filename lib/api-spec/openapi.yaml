@@ -1,0 +1,743 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Jetstar Virtual Pilot Operations API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: flights
+    description: Flight management
+  - name: timetable
+    description: Timetable operations
+  - name: admin
+    description: Admin operations
+  - name: simbrief
+    description: SimBrief flight plan import
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/bootstrap-status:
+    get:
+      operationId: getBootstrapStatus
+      tags: [auth]
+      summary: Check whether the first administrator must be created
+      responses:
+        "200":
+          description: Bootstrap availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootstrapStatus"
+
+  /auth/bootstrap:
+    post:
+      operationId: bootstrapAdmin
+      tags: [auth]
+      summary: Create the first administrator when no accounts exist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BootstrapInput"
+      responses:
+        "201":
+          description: First administrator created and signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          description: An account already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/profile:
+    patch:
+      operationId: updatePilotProfile
+      tags: [auth]
+      summary: Save the current pilot's simulator and SimBrief settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PilotProfileUpdate"
+      responses:
+        "200":
+          description: Updated pilot profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/change-password:
+    post:
+      operationId: changePassword
+      tags: [auth]
+      summary: Change the current user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordBody"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangePasswordResponse"
+        "401":
+          description: Not authenticated or wrong current password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /flights:
+    get:
+      operationId: getAvailableFlights
+      tags: [flights]
+      summary: Get available flights for user's aircraft type
+      responses:
+        "200":
+          description: List of available flights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Flight"
+
+  /timetable:
+    get:
+      operationId: getTimetable
+      tags: [timetable]
+      summary: Get the current user's timetable entries
+      responses:
+        "200":
+          description: User's timetable entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimetableEntry"
+    post:
+      operationId: addToTimetable
+      tags: [timetable]
+      summary: Add a flight to the user's timetable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddToTimetableBody"
+      responses:
+        "201":
+          description: Flight added to timetable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimetableEntry"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Flight already in timetable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /timetable/{id}/start:
+    post:
+      operationId: startFlight
+      tags: [timetable]
+      summary: Mark a timetable entry as started
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Flight started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimetableEntry"
+        "404":
+          description: Entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /timetable/{id}/finish:
+    post:
+      operationId: finishFlight
+      tags: [timetable]
+      summary: Mark a timetable entry as finished and send email
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Flight finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimetableEntry"
+        "404":
+          description: Entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /timetable/{id}:
+    delete:
+      operationId: removeFromTimetable
+      tags: [timetable]
+      summary: Remove a completed flight from the timetable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed successfully
+        "404":
+          description: Entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /simbrief/import:
+    post:
+      operationId: importSimbriefPlan
+      tags: [simbrief]
+      summary: Fetch the pilot's latest SimBrief plan and add it to the timetable
+      responses:
+        "201":
+          description: SimBrief plan imported into the pilot's timetable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimetableEntry"
+        "400":
+          description: SimBrief username is missing or the latest plan is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SimBrief could not be reached or returned no current plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/flights:
+    get:
+      operationId: getAdminFlights
+      tags: [admin]
+      summary: Get all active and pending flights across all pilots
+      responses:
+        "200":
+          description: All active/pending timetable entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminTimetableEntry"
+
+  /admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [admin]
+      summary: Get all users
+      responses:
+        "200":
+          description: List of all users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+    post:
+      operationId: createAdminUser
+      tags: [admin]
+      summary: Create a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Username already taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/users/{id}:
+    patch:
+      operationId: updateAdminUser
+      tags: [admin]
+      summary: Update a pilot's aircraft assignment and simulator version
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserUpdate"
+      responses:
+        "200":
+          description: Updated pilot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAdminUser
+      tags: [admin]
+      summary: Delete a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: User deleted
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    BootstrapStatus:
+      type: object
+      properties:
+        required:
+          type: boolean
+      required: [required]
+
+    LoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        aircraft:
+          type: array
+          items:
+            $ref: "#/components/schemas/AircraftCode"
+        simulatorVersion:
+          $ref: "#/components/schemas/SimulatorVersion"
+        simbriefUsername:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+        mustChangePassword:
+          type: boolean
+        hasSeenTutorial:
+          type: boolean
+        simHours:
+          type: number
+      required:
+        - id
+        - username
+        - aircraft
+        - simulatorVersion
+        - simbriefUsername
+        - isAdmin
+        - mustChangePassword
+        - hasSeenTutorial
+        - simHours
+
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        aircraft:
+          type: array
+          items:
+            $ref: "#/components/schemas/AircraftCode"
+        simulatorVersion:
+          $ref: "#/components/schemas/SimulatorVersion"
+        simbriefUsername:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+      required:
+        - id
+        - username
+        - aircraft
+        - simulatorVersion
+        - simbriefUsername
+        - isAdmin
+
+    CreateUserBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          description: "Optional — leave blank to use default password Vjet1234"
+        aircraft:
+          type: array
+          items:
+            $ref: "#/components/schemas/AircraftCode"
+          minItems: 1
+        simulatorVersion:
+          $ref: "#/components/schemas/SimulatorVersion"
+        isAdmin:
+          type: boolean
+      required:
+        - username
+        - aircraft
+        - simulatorVersion
+        - isAdmin
+
+    BootstrapInput:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+        aircraft:
+          type: array
+          items:
+            $ref: "#/components/schemas/AircraftCode"
+          minItems: 1
+        simulatorVersion:
+          $ref: "#/components/schemas/SimulatorVersion"
+      required: [username, password, aircraft, simulatorVersion]
+
+    PilotProfileUpdate:
+      type: object
+      properties:
+        simulatorVersion:
+          $ref: "#/components/schemas/SimulatorVersion"
+        aircraft:
+          type: array
+          items:
+            $ref: "#/components/schemas/AircraftCode"
+          minItems: 1
+        simbriefUsername:
+          type: ["string", "null"]
+          maxLength: 80
+      required: [simulatorVersion, aircraft, simbriefUsername]
+
+    AdminUserUpdate:
+      type: object
+      properties:
+        aircraft:
+          type: array
+          items:
+            $ref: "#/components/schemas/AircraftCode"
+          minItems: 1
+        simulatorVersion:
+          $ref: "#/components/schemas/SimulatorVersion"
+      required: [aircraft, simulatorVersion]
+
+    ChangePasswordBody:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+      required: [currentPassword, newPassword]
+
+    ChangePasswordResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+
+    AircraftCode:
+      type: string
+      enum: [A320, A20N, A21N, B788]
+
+    SimulatorVersion:
+      type: string
+      enum: [MSFS2020, MSFS2024]
+
+    Flight:
+      type: object
+      properties:
+        id:
+          type: integer
+        flightNumber:
+          type: string
+        departure:
+          type: string
+        arrival:
+          type: string
+        aircraft:
+          type: string
+        departureTime:
+          type: string
+        flightDate:
+          type: string
+        durationMinutes:
+          type: integer
+      required:
+        - id
+        - flightNumber
+        - departure
+        - arrival
+        - aircraft
+        - departureTime
+        - flightDate
+        - durationMinutes
+
+    TimetableEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        flightId:
+          type: integer
+        status:
+          type: string
+        startedAt:
+          type: ["string", "null"]
+        finishedAt:
+          type: ["string", "null"]
+        flightDurationSeconds:
+          type: ["integer", "null"]
+        flight:
+          $ref: "#/components/schemas/Flight"
+      required:
+        - id
+        - userId
+        - flightId
+        - status
+        - startedAt
+        - finishedAt
+        - flightDurationSeconds
+        - flight
+
+    AdminTimetableEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        pilotUsername:
+          type: string
+        pilotAircraft:
+          type: string
+        flightId:
+          type: integer
+        status:
+          type: string
+        startedAt:
+          type: ["string", "null"]
+        finishedAt:
+          type: ["string", "null"]
+        flightDurationSeconds:
+          type: ["integer", "null"]
+        flight:
+          $ref: "#/components/schemas/Flight"
+      required:
+        - id
+        - userId
+        - pilotUsername
+        - pilotAircraft
+        - flightId
+        - status
+        - startedAt
+        - finishedAt
+        - flightDurationSeconds
+        - flight
+
+    AddToTimetableBody:
+      type: object
+      properties:
+        flightId:
+          type: integer
+      required:
+        - flightId

@@ -1,0 +1,3 @@
+# Cloudflare Pages — SPA fallback
+# /api/* is handled by functions/api/[[path]].js (takes priority over this file)
+/* /index.html 200

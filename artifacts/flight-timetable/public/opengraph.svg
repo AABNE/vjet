@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="background" x1="78" y1="0" x2="1122" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#202733"/>
+      <stop offset="1" stop-color="#0D1015"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFD05B"/>
+      <stop offset="1" stop-color="#F49B12"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="28" fill="url(#background)"/>
+  <circle cx="1048" cy="81" r="260" fill="#F7B526" fill-opacity=".07"/>
+  <circle cx="1118" cy="91" r="188" stroke="#F7B526" stroke-opacity=".17" stroke-width="2"/>
+  <path d="M177 119L198 176L258 178L211 215L227 274L177 241L127 274L143 215L96 178L156 176L177 119Z" fill="url(#accent)"/>
+  <text x="294" y="203" fill="#F7F7F2" font-family="Arial,Helvetica,sans-serif" font-size="74" font-weight="800" letter-spacing="3">JETSTAR</text>
+  <text x="300" y="257" fill="#F7B526" font-family="Arial,Helvetica,sans-serif" font-size="27" font-weight="700" letter-spacing="8">VIRTUAL OPS</text>
+  <text x="92" y="367" fill="#F7F7F2" font-family="Arial,Helvetica,sans-serif" font-size="46" font-weight="700">Plan it. Fly it. Log it.</text>
+  <text x="95" y="424" fill="#B5BDC8" font-family="Arial,Helvetica,sans-serif" font-size="24">Jetstar routes and fleet for Microsoft Flight Simulator</text>
+  <g transform="translate(700 319)">
+    <rect width="420" height="166" rx="20" fill="#171C23" stroke="#39424F" stroke-width="2"/>
+    <text x="34" y="47" fill="#98A2AF" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" letter-spacing="4">ROUTE PLAN</text>
+    <text x="34" y="106" fill="#F7F7F2" font-family="Arial,Helvetica,sans-serif" font-size="37" font-weight="700">MEL</text>
+    <path d="M143 95H274" stroke="#F7B526" stroke-width="2" stroke-dasharray="7 8"/>
+    <path d="M207 82L225 95L207 108M220 82L238 95L220 108" stroke="#F7B526" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="300" y="106" fill="#F7F7F2" font-family="Arial,Helvetica,sans-serif" font-size="37" font-weight="700">DPS</text>
+    <text x="34" y="143" fill="#98A2AF" font-family="Arial,Helvetica,sans-serif" font-size="17">A320 family · Boeing 787-8 · A321neo LR</text>
+  </g>
+  <rect x="94" y="539" width="1012" height="1" fill="#3C4552"/>
+  <text x="96" y="578" fill="#AEB7C2" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="600" letter-spacing="1">MICROSOFT FLIGHT SIMULATOR 2020 &amp; 2024</text>
+  <text x="1044" y="578" fill="#F7B526" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="700" text-anchor="end">SIMBRIEF READY</text>
+</svg>

@@ -1,0 +1,118 @@
+The Netlify deploy errored, with the following guidance provided:
+
+- Relevant log lines
+  - [line 68](#L68) shows Vite failed to load the config.
+  - [line 70](#L70) is the actual error: "PORT environment variable is required but was not provided."
+  - The stack trace around [lines 71–76](#L71-L76) shows the failure occurs while importing/processing vite.config.ts.
+
+- Diagnosis
+  - Error type: runtime/config error at build-time (thrown while loading vite.config.ts).
+  - Cause: vite.config.ts requires a PORT environment variable during config import. Netlify's build environment does not provide PORT by default, so importing the config throws and the build aborts.
+
+- Solutions (choose one or both)
+  1. Quick fix in Netlify (no code change)
+     - Add a PORT environment variable in your site settings (e.g., 5173).
+       - Netlify UI: Site settings → Build & deploy → Environment → Environment variables → Add variable
+       - Key: PORT, Value: 5173
+     - Re-deploy.
+     - Use this if your config legitimately needs a port at build/import time (uncommon).
+
+  2. Recommended fix: make vite.config.ts tolerant of missing PORT
+     - Edit artifacts/flight-timetable/vite.config.ts so it does not throw when PORT is missing. Use a default value and only require a port for the dev server, not for build-time import.
+     - Example change (replace the part that currently throws when PORT is missing):
+
+```ts
+// artifacts/flight-timetable/vite.config.ts
+import { defineConfig } from 'vite'
+
+// previously you likely did something like:
+// const port = Number(process.env.PORT)
+// if (!port) throw new Error('PORT environment variable is required but was not provided.')
+
+// Safer approach:
+const DEFAULT_PORT = 5173
+const port = Number(process.env.PORT ?? DEFAULT_PORT)
+
+// Only use port for dev server; don't crash at import time
+export default defineConfig(({ command }) => {
+  if (command === 'serve') {
+    return {
+      server: { port },
+      // other dev options...
+    }
+  }
+  // build config (no port required)
+  return {
+    // build options...
+  }
+})
+```
+
+     - Commit and push this change. Then re-deploy on Netlify. This prevents the config import from throwing in the build environment.
+
+Notes
+- The error occurred during config import (see [line 68](#L68) and [line 70](#L70)), so making the config import safe (not throwing) is the correct long-term solution.
+- If you prefer adding an env var in Netlify instead of editing code, use Solution 1; otherwise implement Solution 2 so builds work reliably on Netlify without custom ENV.
+
+The relevant error logs are:
+
+Line 0: build-image version: 37c27078fd36bc14c3fa8836175bd77aa6640872 (noble-new-builds)
+Line 1: buildbot version: ee2c327a2718c921510fd736205acbb9fe49aa61
+Line 2: Fetching cached dependencies
+Line 3: Failed to fetch cache, continuing with build
+Line 4: Starting to prepare the repo for build
+Line 5: No cached dependencies found. Cloning fresh repo
+Line 6: git clone --filter=blob:none https://github.com/loodnfu/VAmsfstimetable
+Line 7: Preparing Git Reference refs/heads/main
+Line 8: Installing dependencies
+Line 9: mise [36m~/.config/mise/config.toml[0m tools: [34mpython[0m@3.14.3
+Line 10: mise [36m~/.config/mise/config.toml[0m tools: [34mruby[0m@3.4.8
+Line 11: mise [36m~/.config/mise/config.toml[0m tools: [34mgo[0m@1.26.1
+Line 12: v22.22.2 is already installed.
+Line 13: Now using node v22.22.2 (npm v10.9.7)
+Line 58: [36m[1m​[22m[39m
+Line 59: [36m[1m❯ Context[22m[39m
+Line 60:   production
+Line 61: [96m[1m​[22m[39m
+Line 62: [96m[1mBuild command from Netlify app                                [22m[39m
+Line 63: [96m[1m────────────────────────────────────────────────────────────────[22m[39m
+Line 64: ​
+Line 65: [36m$ pnpm --filter @workspace/flight-timetable... run build[39m
+Line 66: Scope: 2 of 9 workspace projects
+Line 67: [36martifacts/flight-timetable[39m [96mbuild[39m$ vite build --config vite.config.ts
+Line 68: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m[31mfailed to load config from /opt/build/repo/artifacts/flight-time
+Line 69: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m[31merror during build:[39m
+Line 70: [36martifacts/flight-timetable[39m [96mbuild[39m: [90mError: PORT environment variable is required but was not provided.[3
+Line 71: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at file:///opt/build/repo/artifacts/flight-timetable/node_modules
+Line 72: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)[3
+Line 73: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async onImport.tracePromise.__proto__ (node:internal/modules/e
+Line 74: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async loadConfigFromBundledFile (file:///opt/build/repo/node_m
+Line 75: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async bundleAndLoadConfigFile (file:///opt/build/repo/node_mod
+Line 76: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async loadConfigFromFile (file:///opt/build/repo/node_modules/
+Line 77: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async resolveConfig (file:///opt/build/repo/node_modules/.pnpm
+Line 78: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async createBuilder (file:///opt/build/repo/node_modules/.pnpm
+Line 79: [36martifacts/flight-timetable[39m [96mbuild[39m: [90m    at async CAC.<anonymous> (file:///opt/build/repo/node_modules/.pn
+Line 80: [36martifacts/flight-timetable[39m [96mbuild[39m: Failed
+Line 81: /opt/build/repo/artifacts/flight-timetable:
+Line 82: [41m[30m ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL [39m[49m [31m@workspace/flight-timetable@0.0.0 build: `vite build --config vite.
+Line 83: [31mExit status 1[39m
+Line 84: [91m[1m​[22m[39m
+Line 85: [91m[1m"build.command" failed                                        [22m[39m
+Line 86: [91m[1m────────────────────────────────────────────────────────────────[22m[39m
+Line 87: ​
+Line 88:   [31m[1mError message[22m[39m
+Line 89:   Command failed with exit code 1: pnpm --filter @workspace/flight-timetable... run build
+Line 90: ​
+Line 91:   [31m[1mError location[22m[39m
+Line 92:   In Build command from Netlify app:
+Line 93:   pnpm --filter @workspace/flight-timetable... run build
+Line 94: ​
+Line 95:   [31m[1mResolved config[22m[39m
+Line 96:   build:
+Line 97:     command: pnpm --filter @workspace/flight-timetable... run build
+Line 98:     commandOrigin: ui
+Line 99:     publish: /opt/build/repo/artifacts/flight-timetable/dist
+Line 100:     publishOrigin: ui
+Line 101: Build failed due to a user error: Build script returned non-zero exit code: 2
+Line 102: Failing build: Failed to build site
+Line 103: Finished processing build request in 12.997s

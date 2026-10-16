@@ -1,0 +1,44 @@
+> workspace@0.0.0 typecheck:libs /opt/render/project/src
+> tsc --build
+==> Uploading build...
+==> Uploaded in 6.7s. Compression took 5.4s
+==> Build successful 🎉
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+==> Running 'node artifacts/api-server/dist/index.mjs'
+file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:19930
+          throw new PathError(`Missing parameter name at index ${index}`, str);
+                ^
+PathError [TypeError]: Missing parameter name at index 1: *; visit https://git.new/pathToRegexpError for info
+    at name (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:19930:17)
+    at parse3 (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:19944:66)
+    at pathToRegexp (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20086:58)
+    at Object.match (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20056:32)
+    at matcher (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20258:27)
+    at new Layer (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20265:68)
+    at router7.route (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20690:21)
+    at app2.route (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20999:26)
+    at app2.<computed> [as get] (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:21062:26)
+    at file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:59657:7 {
+  originalPath: '*'
+}
+Node.js v25.9.0
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+==> Running 'node artifacts/api-server/dist/index.mjs'
+file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:19930
+          throw new PathError(`Missing parameter name at index ${index}`, str);
+                ^
+PathError [TypeError]: Missing parameter name at index 1: *; visit https://git.new/pathToRegexpError for info
+    at name (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:19930:17)
+    at parse3 (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:19944:66)
+    at pathToRegexp (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20086:58)
+    at Object.match (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20056:32)
+    at matcher (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20258:27)
+    at new Layer (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20265:68)
+    at router7.route (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20690:21)
+    at app2.route (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:20999:26)
+    at app2.<computed> [as get] (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:21062:26)
+    at file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:59657:7 {
+  originalPath: '*'
+}

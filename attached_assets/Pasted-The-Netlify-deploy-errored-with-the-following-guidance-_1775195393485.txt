@@ -1,0 +1,64 @@
+The Netlify deploy errored, with the following guidance provided:
+
+Diagnosis
+- The build runner is using a custom base directory: [line 8](#L8) shows "Custom build path detected. Proceeding with the specified path: 'artifacts/flight-timetable'". The most likely cause of the failure is that the specified base directory does not contain a valid Vite project (no package.json or no build script), or the Netlify build settings (base directory / build command / publish directory) are incorrect for where the Vite project actually lives.
+
+Relevant log lines
+- [lines 5–8](#L5-L8)
+
+Cause
+- Netlify was told to run the build inside artifacts/flight-timetable, but that directory either:
+  - does not contain a package.json, or
+  - the package.json in that directory does not have a "build" script (e.g. "vite build"), or
+  - the publish directory is misconfigured (Netlify must publish the dist folder produced by vite, relative to the base dir).
+- Any of the above will cause the Netlify build to fail early despite the repo being cloned successfully.
+
+Solution
+1. Verify the project exists in that folder
+   - Open the folder in the repo in your browser to confirm package.json is present:
+     - https://github.com/loodnfu/VAmsfstimetable/tree/main/artifacts/flight-timetable
+   - If there is no package.json in that directory, either:
+     - move/commit the Vite project into artifacts/flight-timetable, or
+     - change Netlify’s base directory to the folder that actually contains package.json.
+
+2. Ensure package.json has a build script
+   - Open artifacts/flight-timetable/package.json and confirm there is a "build" script. If missing, add one. Example:
+```json
+{
+  "scripts": {
+    "build": "vite build"
+  }
+}
+```
+   - Commit that change.
+
+3. Set Netlify build settings correctly
+   - In Netlify site settings → Build & deploy → Continuous Deployment → Build settings:
+     - Base directory: artifacts/flight-timetable (only if that directory contains package.json)
+     - Build command: npm ci && npm run build
+       - Alternatively, if you keep base directory blank, use:
+         npm ci --prefix artifacts/flight-timetable && npm run build --prefix artifacts/flight-timetable
+     - Publish directory: dist
+   - The publish directory is relative to the base directory. For Vite the default output is dist.
+
+4. Re-run the deploy
+   - Trigger a new deploy after committing any changes and after updating Netlify settings.
+
+Notes
+- If you intended to add files from elsewhere (for example an external import), verify those files/packages are committed to the repo and present in package.json before adjusting any bundler external configuration.
+- If you see Node version errors in expanded logs later, follow Netlify’s documentation for changing Node versions:
+  https://docs.netlify.com/configure-builds/manage-dependencies/#node-js-and-javascript
+
+If you share the full failing build log after these checks (the lines after the clone/build steps) I can point to the exact failing command and the precise error message.
+
+The relevant error logs are:
+
+Line 0: build-image version: 37c27078fd36bc14c3fa8836175bd77aa6640872 (noble-new-builds)
+Line 1: buildbot version: ee2c327a2718c921510fd736205acbb9fe49aa61
+Line 2: Fetching cached dependencies
+Line 3: Failed to fetch cache, continuing with build
+Line 4: Starting to prepare the repo for build
+Line 5: No cached dependencies found. Cloning fresh repo
+Line 6: git clone --filter=blob:none https://github.com/loodnfu/VAmsfstimetable
+Line 7: Preparing Git Reference refs/heads/main
+Line 8: Custom build path detected. Proceeding with the specified path: 'artifacts/flight-timetable'
