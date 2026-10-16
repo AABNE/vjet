@@ -27,6 +27,9 @@ const SOFTWARE = [
     size: "12 MB",
     icon: Activity,
     accent: "#fb5713",
+    // Not ready for download yet — shows a "Coming soon" badge instead of the
+    // installer link. Set back to false (or remove) to re-enable the download.
+    comingSoon: true,
   },
 ];
 
@@ -113,18 +116,35 @@ export default function Software() {
 
                   {/* Download */}
                   <div className="shrink-0">
-                    <a href={app.downloadUrl} download
-                      className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#e04d0e]">
-                      <Download className="h-4 w-4" />{app.downloadLabel}
-                    </a>
-                    <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">Windows 10 / 11 · {app.size}</p>
+                    {app.comingSoon ? (
+                      <>
+                        <span
+                          className="flex cursor-not-allowed items-center gap-2 rounded-xl border border-[#e5e7eb] bg-[#f3f4f6] px-5 py-3 text-sm font-bold text-[#9ca3af]"
+                          aria-disabled="true">
+                          <Download className="h-4 w-4" />Coming soon
+                        </span>
+                        <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">In development</p>
+                      </>
+                    ) : (
+                      <>
+                        <a href={app.downloadUrl} download
+                          className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#e04d0e]">
+                          <Download className="h-4 w-4" />{app.downloadLabel}
+                        </a>
+                        <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">Windows 10 / 11 · {app.size}</p>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 {/* Install note */}
                 <div className="border-t border-[#f3f4f6] bg-[#f9fafb] px-6 py-3">
                   <p className="font-mono text-[10px] text-[#9ca3af]">
-                    <span className="font-bold text-[#6b7280]">Install note:</span> Requires Microsoft Flight Simulator to be running. SimConnect is included with MSFS — no extra setup needed. Run installer as administrator.
+                    {app.comingSoon ? (
+                      <><span className="font-bold text-[#6b7280]">Heads up:</span> Sim Link is still in development — the installer will appear here once it's ready.</>
+                    ) : (
+                      <><span className="font-bold text-[#6b7280]">Install note:</span> Requires Microsoft Flight Simulator to be running. SimConnect is included with MSFS — no extra setup needed. Run installer as administrator.</>
+                    )}
                   </p>
                 </div>
               </div>

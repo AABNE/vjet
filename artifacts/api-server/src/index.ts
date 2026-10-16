@@ -28,12 +28,8 @@ initDb().then(() => {
     logger.info({ port }, "Server listening");
 
     // Keep a rolling pool of random routes topped up, and prune routes
-    // 30 minutes before departure. Only while the pilot hub is enabled.
-    if (process.env["PILOT_HUB_ENABLED"] === "true") {
-      startRouteScheduler();
-    } else {
-      logger.info("pilot hub disabled (PILOT_HUB_ENABLED != true) — route scheduler not started");
-    }
+    // 30 minutes before departure.
+    startRouteScheduler();
 
     // Keep the free-tier instance warm so Discord interactions (Accept/Decline)
     // hit a running server within Discord's 3-second window.
