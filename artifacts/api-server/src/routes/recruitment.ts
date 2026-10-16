@@ -19,7 +19,13 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
+import { db, usersTable, applicationsTable, eq } from "@workspace/db";
 import { logger } from "../lib/logger";
+
+// Default temporary password for an auto-created pilot account. The account is
+// flagged mustChangePassword, so the pilot is forced to change it on first login.
+const DEFAULT_PILOT_PASSWORD = "Vjet1234";
 
 const router: IRouter = Router();
 
@@ -234,6 +240,39 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Store the application so we can auto-create the pilot's hub account if the
+    // recruiter accepts it later. Keyed by Discord ID — re-applying overwrites.
+    try {
+      const aircraftCsv = aircraft.join(",");
+      const storedCid = body.noVatsim ? null : cid;
+      await db
+        .insert(applicationsTable)
+        .values({
+          discordId,
+          username,
+          aircraft: aircraftCsv,
+          email,
+          cid: storedCid,
+          status: "pending",
+        })
+        .onConflictDoUpdate({
+          target: applicationsTable.discordId,
+          set: {
+            username,
+            aircraft: aircraftCsv,
+            email,
+            cid: storedCid,
+            status: "pending",
+            createdAt: new Date(),
+            decidedAt: null,
+          },
+        });
+    } catch (err) {
+      // Non-fatal: the recruiter still got the application DM. Auto-create on
+      // accept just won't have a stored record to work from.
+      logger.error({ err }, "apply: failed to store application");
+    }
+
     res.json({ ok: true });
   } catch {
     res.status(502).json({ error: "A delivery error occurred. Please try again later." });
@@ -368,16 +407,6 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
   const applicantId = match[2]!;
   const decisionLabel = decision === "accept" ? "ACCEPTED" : "DECLINED";
 
-  const dmText = decision === "accept"
-    ? [
-        "🎉 Congratulations — your **vJetstar pilot application has been accepted!**",
-        "",
-        "Head to **#❔︱whats-next** in our Discord server to find out everything you need to do next.",
-        "",
-        "Once you've had a read through, hit the button below and you'll be granted your Pilot role automatically.",
-      ].join("\n")
-    : "Thank you for applying to vJetstar. Unfortunately, your pilot application has been **declined** at this time.";
-
   const dmComponents = decision === "accept"
     ? [{
         type: 1,
@@ -412,13 +441,95 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
     },
   });
 
-  // Background work (response already sent): DM the applicant, then swap roles on accept.
+  // Background work (response already sent): on accept, create the pilot's hub
+  // account; then DM the applicant and swap roles. On decline, just record it.
   void (async () => {
+    if (decision === "decline") {
+      try {
+        await db.update(applicationsTable)
+          .set({ status: "declined", decidedAt: new Date() })
+          .where(eq(applicationsTable.discordId, applicantId));
+      } catch (err) { logger.error({ err }, "decline: failed to update application status"); }
+
+      try {
+        await dmUser(
+          token,
+          applicantId,
+          "Thank you for applying to vJetstar. Unfortunately, your pilot application has been **declined** at this time.",
+          [],
+        );
+      } catch { /* best-effort */ }
+      return;
+    }
+
+    // ── Accept: auto-create the hub account from the stored application ──
+    let hubUsername: string | undefined;
+    let accountCreated = false;
+    let usernameTaken = false;
     try {
-      await dmUser(token, applicantId, dmText, dmComponents);
+      const [appRow] = await db.select().from(applicationsTable)
+        .where(eq(applicationsTable.discordId, applicantId));
+
+      if (appRow?.username) {
+        hubUsername = appRow.username;
+        const hash = await bcrypt.hash(DEFAULT_PILOT_PASSWORD, 12);
+        const aircraft = appRow.aircraft && appRow.aircraft.trim() ? appRow.aircraft : "A320";
+        const inserted = await db.insert(usersTable).values({
+          username: appRow.username,
+          passwordHash: hash,
+          aircraft,
+          simulatorVersion: "MSFS2024",
+          isAdmin: "false",
+          hasSeenTutorial: "false",
+          mustChangePassword: "true",
+        }).onConflictDoNothing({ target: usersTable.username }).returning();
+
+        accountCreated = inserted.length > 0;
+        usernameTaken = !accountCreated;
+        if (usernameTaken) {
+          logger.warn({ username: appRow.username }, "accept: hub username already exists — no account created");
+        }
+
+        await db.update(applicationsTable)
+          .set({ status: "accepted", decidedAt: new Date() })
+          .where(eq(applicationsTable.discordId, applicantId));
+      } else {
+        logger.warn({ applicantId }, "accept: no stored application found — cannot auto-create account");
+      }
+    } catch (err) {
+      logger.error({ err }, "accept: account creation failed");
+    }
+
+    // Build the acceptance DM, including login details when an account was made.
+    const lines = [
+      "🎉 Congratulations — your **vJetstar pilot application has been accepted!**",
+    ];
+    if (accountCreated && hubUsername) {
+      lines.push(
+        "",
+        "**Your pilot hub account is ready:**",
+        `• Username: \`${hubUsername}\``,
+        `• Temporary password: \`${DEFAULT_PILOT_PASSWORD}\``,
+        "You'll be asked to set a new password the first time you sign in.",
+      );
+    } else if (usernameTaken && hubUsername) {
+      lines.push(
+        "",
+        `We couldn't auto-create your hub account because the username \`${hubUsername}\` is already taken. An admin will sort this out with you.`,
+      );
+    }
+    lines.push(
+      "",
+      "Head to **#❔︱whats-next** in our Discord server to find out everything you need to do next.",
+      "",
+      "Once you've had a read through, hit the button below and you'll be granted your Pilot role automatically.",
+    );
+
+    try {
+      await dmUser(token, applicantId, lines.join("\n"), dmComponents);
     } catch { /* best-effort */ }
 
-    if (decision === "accept" && guildId) {
+    if (guildId) {
       const base = `${DISCORD_API}/guilds/${guildId}/members/${applicantId}/roles`;
       const noApp = process.env["ROLE_NO_APPLICATION_ID"];
       const accepted = process.env["ROLE_ACCEPTED_ID"];

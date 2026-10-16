@@ -63,6 +63,17 @@ export async function initDb(): Promise<void> {
       );
 
       CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+
+      CREATE TABLE IF NOT EXISTS "applications" (
+        "discord_id" TEXT PRIMARY KEY,
+        "username"   TEXT NOT NULL,
+        "aircraft"   TEXT NOT NULL DEFAULT '',
+        "email"      TEXT,
+        "cid"        TEXT,
+        "status"     TEXT NOT NULL DEFAULT 'pending',
+        "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "decided_at" TIMESTAMPTZ
+      );
     `);
 
     // Seed default admin if no users exist
