@@ -472,11 +472,16 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
       },
     });
 
-    // Background role swap (response already sent): accepted -> pilot.
+    // Background role swap (response already sent). A confirmed pilot should
+    // hold ONLY the pilot role, so strip both the "no application yet" and
+    // "accepted" roles first (in case accept couldn't remove them earlier), then
+    // add the pilot role LAST.
     if (guildId) {
+      const noApp = process.env["ROLE_NO_APPLICATION_ID"];
       const accepted = process.env["ROLE_ACCEPTED_ID"];
       const pilot = process.env["ROLE_PILOT_ID"];
       void (async () => {
+        if (noApp) await changeMemberRole(token, guildId, applicantId, noApp, "DELETE", "remove no-application");
         if (accepted) await changeMemberRole(token, guildId, applicantId, accepted, "DELETE", "remove accepted");
         if (pilot) await changeMemberRole(token, guildId, applicantId, pilot, "PUT", "add pilot");
       })();
