@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { initDb } from "./lib/init-db";
 import { startRouteScheduler } from "./lib/route-scheduler";
 import { startSelfKeepalive } from "./lib/keepalive";
+import { registerDiscordCommands } from "./lib/discord-commands";
 
 const rawPort = process.env["PORT"];
 
@@ -34,5 +35,8 @@ initDb().then(() => {
     // Keep the free-tier instance warm so Discord interactions (Accept/Decline)
     // hit a running server within Discord's 3-second window.
     startSelfKeepalive();
+
+    // Register the bot's slash commands (e.g. /say) with Discord.
+    void registerDiscordCommands();
   });
 });

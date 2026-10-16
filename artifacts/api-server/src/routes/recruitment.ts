@@ -377,7 +377,74 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
     return;
   }
 
-  // Only component (button) interactions
+  // ── Slash commands (type 2) ───────────────────────────────────────────────
+  if (interaction.type === 2) {
+    const commandName = String(interaction.data?.name || "");
+
+    // /say <message> — post the message as a plain bot message in the channel
+    // it was used in. No reply, no command attribution; the invoker gets a
+    // private "Sent" confirmation.
+    if (commandName === "say") {
+      const options: Array<{ name: string; value?: unknown }> = interaction.data?.options || [];
+      const message = String(options.find((o) => o.name === "message")?.value ?? "").slice(0, 2000);
+      const channelId = String(interaction.channel_id || interaction.channel?.id || "");
+
+      if (!message.trim()) {
+        res.json({ type: 4, data: { content: "You need to give me something to say.", flags: 64 } });
+        return;
+      }
+      if (!channelId) {
+        res.json({ type: 4, data: { content: "Couldn't tell which channel to post in.", flags: 64 } });
+        return;
+      }
+
+      // Defer with an ephemeral response (only the invoker sees it), then post
+      // the real message and edit the confirmation with the outcome.
+      res.json({ type: 5, data: { flags: 64 } });
+
+      const appId = String(interaction.application_id || "");
+      const interactionToken = String(interaction.token || "");
+      void (async () => {
+        let ok = false;
+        try {
+          const r = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+            method: "POST",
+            headers: botHeaders(token),
+            // parse: [] → the message never pings @everyone/@here, roles or users,
+            // so /say can't be used to mass-mention.
+            body: JSON.stringify({ content: message, allowed_mentions: { parse: [] } }),
+          });
+          ok = r.ok;
+          if (!ok) {
+            const body = await r.text().catch(() => "");
+            logger.warn({ status: r.status, channelId, body: body.slice(0, 200) }, "say: failed to post message");
+          }
+        } catch (err) {
+          logger.error({ err }, "say: post error");
+        }
+
+        if (appId && interactionToken) {
+          try {
+            await fetch(`${DISCORD_API}/webhooks/${appId}/${interactionToken}/messages/@original`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                content: ok
+                  ? "✅ Sent."
+                  : "❌ Couldn't send that — check I have permission to post in this channel.",
+              }),
+            });
+          } catch { /* best-effort */ }
+        }
+      })();
+      return;
+    }
+
+    res.json({ type: 4, data: { content: "Unknown command.", flags: 64 } });
+    return;
+  }
+
+  // Only component (button) interactions beyond this point
   if (interaction.type !== 3) {
     res.json({ type: 4, data: { content: "Unsupported interaction.", flags: 64 } });
     return;
