@@ -75,14 +75,27 @@ app.use("/api", router);
   app.use("/apply", express.static(applyDir));
 }
 
-// Serve built frontend in production
+// The pilot hub is hidden until it's finished — flip PILOT_HUB_ENABLED=true
+// (env var) to bring the hub UI back. The application site stays live either way.
+const pilotHubEnabled = process.env["PILOT_HUB_ENABLED"] === "true";
+
 if (process.env["NODE_ENV"] === "production") {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const staticDir = path.join(__dirname, "../../flight-timetable/dist/public");
-  app.use(express.static(staticDir));
-  app.get(/.*/, (_req, res) => {
-    res.sendFile(path.join(staticDir, "index.html"));
-  });
+  if (pilotHubEnabled) {
+    // Serve the built pilot-hub SPA at / with a client-side-routing fallback.
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const staticDir = path.join(__dirname, "../../flight-timetable/dist/public");
+    app.use(express.static(staticDir));
+    app.get(/.*/, (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next(); // let unknown API routes 404
+      res.sendFile(path.join(staticDir, "index.html"));
+    });
+  } else {
+    // Hub hidden: send the root and any unknown page to the application form.
+    app.get(/.*/, (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next(); // let unknown API routes 404
+      res.redirect("/apply/");
+    });
+  }
 }
 
 export default app;
