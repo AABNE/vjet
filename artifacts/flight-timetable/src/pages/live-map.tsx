@@ -142,7 +142,7 @@ export default function LiveMap() {
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-[#e5e7eb]" style={{ height: 460 }}>
+      <div className="relative isolate overflow-hidden rounded-2xl border border-[#e5e7eb]" style={{ height: 460 }}>
         <div ref={mapEl} style={{ position: "absolute", inset: 0, background: "#0b0e12" }} />
         {!p && (
           <div className="absolute inset-0 z-[500] flex flex-col items-center justify-center bg-[#0b0e12]/80 text-center text-white">
