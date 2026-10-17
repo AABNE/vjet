@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
-import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar } from "lucide-react";
+import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette } from "lucide-react";
 import { VJetstarLogo } from "@/components/VJetstarLogo";
 import { useEffect, useState } from "react";
 import { useIsDesktopApp } from "@/hooks/useSimLink";
@@ -14,17 +14,19 @@ import Flights from "@/pages/flights";
 import Logs from "@/pages/logs";
 import Admin from "@/pages/admin";
 import Settings from "@/pages/settings";
-import Software from "@/pages/software";
+import Liveries from "@/pages/liveries";
 import LiveMap from "@/pages/live-map";
 import NotFound from "@/pages/not-found";
+
+const SIMLINK_DOWNLOAD = "https://github.com/AABNE/vjet/releases/latest";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
 
 const navItems = [
   { href: "/timetable",  label: "My timetable",     icon: CalendarDays },
   { href: "/flights",    label: "Available routes",  icon: Plane },
+  { href: "/liveries",   label: "Liveries",          icon: Palette },
   { href: "/logs",       label: "Flight records",    icon: ClipboardList },
-  { href: "/software",   label: "Software",          icon: Download },
   { href: "/settings",   label: "Settings",          icon: Settings2 },
 ];
 
@@ -314,6 +316,11 @@ function Layout({ children }: { children: React.ReactNode }) {
           )}
 
           <div className="mt-auto hidden border-t border-[#f3f4f6] pt-4 md:block">
+            <a href={SIMLINK_DOWNLOAD} target="_blank" rel="noopener noreferrer"
+              className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-[#1a1a1a]">
+              <Download className="h-4 w-4" />
+              Desktop app <span className="rounded-full bg-[#fb5713] px-1.5 py-0.5 text-[8px] font-black uppercase text-white">Beta</span>
+            </a>
             <button data-testid="button-sign-out" onClick={() => logout.mutate()} disabled={logout.isPending}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-[#1a1a1a]">
               <LogOut className="h-4 w-4" />
@@ -348,7 +355,7 @@ function Router() {
         <Route path="/timetable" component={Timetable} />
         <Route path="/flights"  component={Flights} />
         <Route path="/logs"     component={Logs} />
-        <Route path="/software" component={Software} />
+        <Route path="/liveries" component={Liveries} />
         <Route path="/live-map" component={LiveMap} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
