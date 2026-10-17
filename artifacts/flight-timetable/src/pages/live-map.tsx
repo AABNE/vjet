@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useAuth } from "@/components/auth-provider";
@@ -6,6 +6,9 @@ import { useSimLink, type SimPosition } from "@/hooks/useSimLink";
 import { Plane, Gauge, Mountain, Compass, Navigation, Clock, Ruler, Activity } from "lucide-react";
 
 const ORANGE = "#fb5713";
+// CARTO Basemaps key (client-side basemap key — restrict it to the hub domain in
+// the CARTO dashboard). Overridable at build via VITE_CARTO_KEY.
+const CARTO_KEY = (import.meta.env.VITE_CARTO_KEY as string | undefined) || "cb1_4mx5_1_a54999ab7bf2d9b048dc3dd5";
 
 function haversineNm(a: [number, number], b: [number, number]): number {
   const R = 3440.065; // nautical miles
@@ -46,41 +49,44 @@ function Stat({ icon: Icon, label, value, unit }: { icon: any; label: string; va
 
 export default function LiveMap() {
   const { user } = useAuth();
-  const { connected, position } = useSimLink();
+  const { connected, position, session, initialTrail } = useSimLink();
 
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const trailRef = useRef<L.Polyline | null>(null);
   const trailPts = useRef<[number, number][]>([]);
-  const lastPt = useRef<[number, number] | null>(null);
   const firstFix = useRef(true);
+  const seeded = useRef(false);
 
-  const [distanceNm, setDistanceNm] = useState(0);
-  const [airborneSec, setAirborneSec] = useState(0);
+  // Session stats come from the desktop app (persist across navigation).
+  const distanceNm = session.distanceNm;
+  const airborneSec = session.airborneSec;
 
   // Init Leaflet once.
   useEffect(() => {
     if (!mapEl.current || mapRef.current) return;
     const map = L.map(mapEl.current, { zoomControl: true, attributionControl: true, worldCopyJump: true })
       .setView([-25.3, 133.8], 4);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19, attribution: "&copy; OpenStreetMap &copy; CARTO",
+    L.tileLayer(`https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+      maxZoom: 20, attribution: "&copy; OpenStreetMap &copy; CARTO",
     }).addTo(map);
     mapRef.current = map;
     trailRef.current = L.polyline([], { color: ORANGE, weight: 2.5, opacity: 0.75 }).addTo(map);
-    return () => { map.remove(); mapRef.current = null; };
+    return () => { map.remove(); mapRef.current = null; markerRef.current = null; seeded.current = false; };
   }, []);
 
-  // Airborne timer.
+  // Seed the trail from the app's full flight path (restores it on re-entry).
   useEffect(() => {
-    const t = setInterval(() => {
-      if (position && !position.onGround && !position.paused) setAirborneSec((s) => s + 1);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [position]);
+    if (seeded.current || !mapRef.current || !trailRef.current || initialTrail.length === 0) return;
+    seeded.current = true;
+    trailPts.current = initialTrail.slice();
+    trailRef.current.setLatLngs(trailPts.current);
+    const last = trailPts.current[trailPts.current.length - 1];
+    if (last && firstFix.current) { mapRef.current.setView(last, 8); firstFix.current = false; }
+  }, [initialTrail]);
 
-  // Update map + session distance on each fix.
+  // Update map on each fix.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !position) return;
@@ -95,15 +101,12 @@ export default function LiveMap() {
       markerRef.current.setIcon(L.divIcon({ className: "", html: planeHtml(position.headingTrue), iconSize: [34, 34], iconAnchor: [17, 17] }));
     }
 
-    if (lastPt.current && !position.onGround) {
-      const d = haversineNm(lastPt.current, pt);
-      if (d < 50) setDistanceNm((x) => x + d); // ignore teleports/resets
+    const prev = trailPts.current[trailPts.current.length - 1];
+    if (!prev || haversineNm(prev, pt) > 0.05) {
+      trailPts.current.push(pt);
+      if (trailPts.current.length > 8000) trailPts.current.shift();
+      trailRef.current?.setLatLngs(trailPts.current);
     }
-    lastPt.current = pt;
-
-    trailPts.current.push(pt);
-    if (trailPts.current.length > 5000) trailPts.current.shift();
-    trailRef.current?.setLatLngs(trailPts.current);
 
     if (firstFix.current) { map.setView(pt, 8); firstFix.current = false; }
     else map.panTo(pt, { animate: true, duration: 0.4 });
