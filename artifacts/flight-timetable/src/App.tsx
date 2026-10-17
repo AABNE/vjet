@@ -8,6 +8,7 @@ import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Dow
 import { VJetstarLogo } from "@/components/VJetstarLogo";
 import { useEffect, useState } from "react";
 import { useIsDesktopApp } from "@/hooks/useSimLink";
+import { AutoFlightTimer } from "@/components/AutoFlightTimer";
 import Login from "@/pages/login";
 import Timetable from "@/pages/timetable";
 import Flights from "@/pages/flights";
@@ -272,6 +273,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-[100dvh] bg-[#f9fafb] text-[#1a1a1a]">
       {needsPasswordChange && <ForcePasswordModal onDone={() => setPwDone(true)} />}
       {needsTutorial && <TutorialModal onDone={() => setTutDone(true)} />}
+      <AutoFlightTimer />
 
       <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between border-b border-[#1a1a1a] bg-[#1a1a1a] px-4 md:px-8">
         <Link href="/timetable" className="flex items-center gap-3" data-testid="link-brand-home">

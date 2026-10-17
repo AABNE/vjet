@@ -5,6 +5,7 @@ export interface SimPosition {
   connected: boolean;
   onGround: boolean;
   paused: boolean;
+  parkingBrake: boolean;
   lat: number;
   lon: number;
   altFt: number;

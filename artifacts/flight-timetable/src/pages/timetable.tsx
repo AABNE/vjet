@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetTimetableQueryKey, useGetTimetable, useStartFlight, useFinishFlight, useRemoveFromTimetable } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
+import { useSimLink } from "@/hooks/useSimLink";
 import { AlertTriangle, ArrowRight, Clock3, ExternalLink, Plane, Radio, RotateCw } from "lucide-react";
 import { Link } from "wouter";
 
@@ -78,6 +79,24 @@ export default function Timetable() {
   const flagged = entries.filter(e => e.status.toLowerCase() === "flagged");
   const err = q.error as any;
 
+  // ── Auto flight timer status (desktop app only) ──
+  // The firing logic lives in the app-wide <AutoFlightTimer>: when the Sim Link
+  // desktop app is connected to MSFS, the timer starts when the parking brake is
+  // released at the gate and finishes when it's set again on arrival. Here we
+  // just surface what it's doing. Without the app, the manual buttons do it.
+  const { isApp, connected, position } = useSimLink();
+  const brake = position?.parkingBrake;
+  const autoMode = Boolean(isApp && connected && brake !== undefined);
+
+  // The flight the brake controls: the active one, else the earliest pending
+  // (same choice <AutoFlightTimer> makes).
+  const nextPending = [...entries]
+    .filter(e => e.status.toLowerCase() === "pending")
+    .sort((a, b) =>
+      `${a.flight.flightDate} ${a.flight.departureTime}`.localeCompare(`${b.flight.flightDate} ${b.flight.departureTime}`),
+    )[0];
+  const autoEntryId = autoMode ? (active?.id ?? nextPending?.id) : undefined;
+
   return (
     <div className="mx-auto max-w-6xl">
       {/* Header */}
@@ -100,6 +119,25 @@ export default function Timetable() {
       {(start.error || finish.error || remove.error) && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700" role="alert" data-testid="status-flight-action-error">
           {((start.error || finish.error || remove.error) as any)?.message || "Flight update failed."}
+        </div>
+      )}
+
+      {/* Auto-timer status (desktop app only) */}
+      {autoMode && (
+        <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-[#e5e7eb] bg-white px-4 py-3" data-testid="status-auto-timer">
+          <span className="inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#1a1a1a]">
+            <span className={`h-2.5 w-2.5 rounded-full ${brake ? "bg-red-500" : "bg-green-500"}`} />
+            Parking brake {brake ? "set" : "released"}
+          </span>
+          <span className="text-xs text-[#6b7280]">
+            {active ? (
+              <>Auto-timer running on <b className="text-[#1a1a1a]">{active.flight.flightNumber}</b> — set the brake after landing to finish.</>
+            ) : nextPending ? (
+              <>Release the brake at the gate to auto-start <b className="text-[#1a1a1a]">{nextPending.flight.flightNumber}</b>.</>
+            ) : (
+              <>Pick up a sector and the brake will run its timer automatically.</>
+            )}
+          </span>
         </div>
       )}
 
@@ -130,6 +168,8 @@ export default function Timetable() {
               </div>
             ) : upcoming.map(entry => {
               const sbUrl = simbriefUrl(entry, simbriefId);
+              const isActive = entry.status.toLowerCase() === "active";
+              const isAuto = autoMode && autoEntryId === entry.id;
               return (
                 <article key={entry.id} data-testid={`card-timetable-entry-${entry.id}`}
                   className={`rounded-2xl border bg-white p-5 transition ${entry.status.toLowerCase() === "active" ? "border-[#fb5713] ring-1 ring-[#fb5713]/20" : "border-[#e5e7eb]"}`}>
@@ -176,17 +216,25 @@ export default function Timetable() {
                           <ExternalLink className="h-3.5 w-3.5" />SimBrief
                         </a>
                       )}
-                      {entry.status.toLowerCase() === "active" ? (
+                      {/* Auto chip — brake controls this sector (desktop app only) */}
+                      {isAuto && (
+                        <span data-testid={`chip-auto-${entry.id}`} title="The desktop app runs this timer from your parking brake"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-[#fb5713]/30 bg-[#fff7ed] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#fb5713]">
+                          <span className={`h-2 w-2 rounded-full ${brake ? "bg-red-500" : "bg-green-500"}`} />
+                          Auto · brake
+                        </span>
+                      )}
+                      {isActive ? (
                         <button data-testid={`button-finish-flight-${entry.id}`} disabled={finish.isPending}
                           onClick={() => finish.mutate({ id: entry.id })}
                           className="rounded-xl bg-green-600 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-50">
-                          Finish sector
+                          {isAuto ? "Finish now" : "Finish sector"}
                         </button>
                       ) : (
                         <button data-testid={`button-start-flight-${entry.id}`} disabled={start.isPending}
                           onClick={() => start.mutate({ id: entry.id })}
                           className="rounded-xl bg-[#1a1a1a] px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-50">
-                          Start flight
+                          {isAuto ? "Start now" : "Start flight"}
                         </button>
                       )}
                       <button data-testid={`button-remove-entry-${entry.id}`} disabled={remove.isPending}
