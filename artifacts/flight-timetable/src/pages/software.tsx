@@ -12,23 +12,23 @@ const SOFTWARE = [
   {
     id: "tracker",
     name: "vJetstar Sim Link",
-    version: "1.0.0",
+    version: "1.0.0 Beta",
     platform: "Windows",
-    description: "System tray app that reads your active MSFS flight and automatically updates your live position on the Pilot Hub map. Shows your current altitude, speed, heading and route progress in real time.",
+    description: "Desktop app that opens the Pilot Hub with a built-in live map and flight stats, reading your active MSFS flight in real time — altitude, speed, heading and route progress. Runs in the system tray and keeps your sim hours in sync.",
     features: [
+      "Opens the Pilot Hub with a built-in Live Map",
+      "Live MSFS position, altitude, speed & heading",
       "Connects to MSFS via SimConnect",
-      "Live position feeds to the Pilot Hub",
-      "System tray — runs silently in background",
-      "Auto-starts with Windows",
+      "System tray — keeps your sim hours in sync",
       "Works with MSFS 2020 and MSFS 2024",
     ],
-    downloadUrl: "/downloads/vJetstarSimLink-Setup.exe",
-    downloadLabel: "Download Installer (.exe)",
-    size: "12 MB",
+    downloadUrl: "/downloads/vJetstarSimLink-Setup-Beta.zip",
+    downloadLabel: "Download Beta (.zip)",
+    size: "~90 MB",
     icon: Activity,
     accent: "#fb5713",
-    // Not ready for download yet — shows a "Coming soon" badge instead of the
-    // installer link. Set back to false (or remove) to re-enable the download.
+    beta: true,
+    // Flip to false once the beta installer zip is uploaded to public/downloads.
     comingSoon: true,
   },
 ];
@@ -99,6 +99,9 @@ export default function Software() {
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-lg font-black uppercase tracking-tight text-[#1a1a1a]">{app.name}</h3>
+                        {app.beta && (
+                          <span className="rounded-full bg-[#fb5713] px-2 py-0.5 font-mono text-[9px] font-black uppercase tracking-wider text-white">Beta</span>
+                        )}
                         <span className="rounded-full border border-[#e5e7eb] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#9ca3af]">v{app.version}</span>
                         <span className="rounded-full border border-[#e5e7eb] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#9ca3af]">{app.platform}</span>
                         <span className="rounded-full border border-[#e5e7eb] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#9ca3af]">{app.size}</span>

@@ -75,6 +75,13 @@ app.use("/api", router);
   app.use("/apply", express.static(applyDir));
 }
 
+// Serve downloadable files (e.g. the Sim Link desktop app installer) at /downloads.
+{
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const downloadsDir = path.join(here, "../public/downloads");
+  app.use("/downloads", express.static(downloadsDir));
+}
+
 // Serve the built pilot-hub SPA at / with a client-side-routing fallback.
 if (process.env["NODE_ENV"] === "production") {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
