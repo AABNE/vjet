@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetAvailableFlightsQueryKey, getGetTimetableQueryKey, useGetAvailableFlights, useAddToTimetable } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
-import { MapPin, Plane, Plus, RotateCw, Search } from "lucide-react";
+import { MapPin, Plane, Plus, RotateCw, Search, X } from "lucide-react";
 
 function JetstarStar({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
@@ -21,6 +21,7 @@ export default function Flights() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [fleet, setFleet] = useState("All aircraft");
+  const [customOpen, setCustomOpen] = useState(false);
 
   const q = useGetAvailableFlights({ query: { queryKey: getGetAvailableFlightsQueryKey(), refetchOnMount: "always", refetchInterval: 30_000 } });
   const add = useAddToTimetable({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTimetableQueryKey() }); qc.invalidateQueries({ queryKey: getGetAvailableFlightsQueryKey() }); } } });
@@ -45,10 +46,28 @@ export default function Flights() {
             Today's routes across Australia and the Asia-Pacific. Routes refresh daily — pick one up before another pilot does.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-[#6b7280]">
-          <MapPin className="h-4 w-4 text-[#fb5713]" />{airports.length} network airports
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-[#6b7280]">
+            <MapPin className="h-4 w-4 text-[#fb5713]" />{airports.length} network airports
+          </div>
+          <button data-testid="button-custom-flight" onClick={() => setCustomOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#333]">
+            <Plus className="h-4 w-4" />Custom flight
+          </button>
         </div>
       </div>
+
+      {customOpen && (
+        <CustomFlightModal
+          fleet={user?.aircraft || []}
+          onClose={() => setCustomOpen(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: getGetTimetableQueryKey() });
+            qc.invalidateQueries({ queryKey: getGetAvailableFlightsQueryKey() });
+            setCustomOpen(false);
+          }}
+        />
+      )}
 
       {/* Filters */}
       <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-[#e5e7eb] bg-white p-3 sm:flex-row">
@@ -143,6 +162,133 @@ export default function Flights() {
           {(add.error as any).message || "Could not add this sector."}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Custom flight modal ─────────────────────────────────────────────────────
+function CustomFlightModal({ fleet, onClose, onCreated }: {
+  fleet: string[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [departure, setDeparture] = useState("");
+  const [arrival, setArrival] = useState("");
+  const [aircraft, setAircraft] = useState(fleet[0] || "A320");
+  const [flightDate, setFlightDate] = useState(today);
+  const [departureTime, setDepartureTime] = useState("12:00");
+  const [durationMinutes, setDurationMinutes] = useState(90);
+  const [flightNumber, setFlightNumber] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setPending(true);
+    try {
+      const res = await fetch("/api/timetable/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ departure, arrival, aircraft, flightDate, departureTime, durationMinutes, flightNumber }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error || "Could not create the flight.");
+      } else {
+        onCreated();
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const label = "mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-[.16em] text-[#6b7280]";
+  const input = "h-10 w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm uppercase outline-none focus:border-[#fb5713]";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between bg-[#1a1a1a] px-6 py-5 text-white">
+          <div className="flex items-center gap-3">
+            <JetstarStar size={18} className="text-[#fb5713]" />
+            <div>
+              <h2 className="font-black uppercase tracking-tight">Custom flight</h2>
+              <p className="mt-0.5 text-xs text-white/60">Fly your own route — it goes straight to your timetable.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-white/40 transition hover:text-white/80">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4 p-6">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>From</label>
+              <input value={departure} onChange={e => setDeparture(e.target.value.toUpperCase())} required maxLength={4}
+                placeholder="YBBN" className={input} data-testid="input-custom-departure" />
+            </div>
+            <div>
+              <label className={label}>To</label>
+              <input value={arrival} onChange={e => setArrival(e.target.value.toUpperCase())} required maxLength={4}
+                placeholder="YSSY" className={input} data-testid="input-custom-arrival" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>Aircraft</label>
+              <select value={aircraft} onChange={e => setAircraft(e.target.value)} className={input} data-testid="select-custom-aircraft">
+                {(fleet.length ? fleet : ["A320"]).map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={label}>Flight no. <span className="text-[#c7ccd4]">(optional)</span></label>
+              <input value={flightNumber} onChange={e => setFlightNumber(e.target.value.toUpperCase())} maxLength={8}
+                placeholder="Auto" className={input} data-testid="input-custom-flightno" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={label}>Date</label>
+              <input type="date" value={flightDate} onChange={e => setFlightDate(e.target.value)} required
+                className={input + " !normal-case"} data-testid="input-custom-date" />
+            </div>
+            <div>
+              <label className={label}>Dep (UTC)</label>
+              <input type="time" value={departureTime} onChange={e => setDepartureTime(e.target.value)} required
+                className={input + " !normal-case"} data-testid="input-custom-time" />
+            </div>
+            <div>
+              <label className={label}>Duration</label>
+              <div className="relative">
+                <input type="number" min={10} max={900} value={durationMinutes}
+                  onChange={e => setDurationMinutes(parseInt(e.target.value || "0", 10))} required
+                  className={input + " !normal-case pr-10"} data-testid="input-custom-duration" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9ca3af]">min</span>
+              </div>
+            </div>
+          </div>
+
+          {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="rounded-xl border border-[#e5e7eb] px-4 py-2.5 text-xs font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6]">
+              Cancel
+            </button>
+            <button type="submit" disabled={pending}
+              className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#e04d0e] disabled:opacity-50">
+              <Plus className="h-4 w-4" />{pending ? "Adding…" : "Add to timetable"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

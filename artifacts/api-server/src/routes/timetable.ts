@@ -123,6 +123,81 @@ router.post("/timetable", async (req, res): Promise<void> => {
   res.status(201).json(created);
 });
 
+// POST /api/timetable/custom — pilot creates their own flight and adds it
+// straight to their timetable (not from the generated schedule).
+router.post("/timetable/custom", async (req, res): Promise<void> => {
+  if (!req.session.userId) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId));
+  if (!user) {
+    res.status(401).json({ error: "User not found" });
+    return;
+  }
+
+  const body = req.body ?? {};
+  const departure = String(body.departure || "").trim().toUpperCase();
+  const arrival = String(body.arrival || "").trim().toUpperCase();
+  const aircraft = String(body.aircraft || "").trim().toUpperCase();
+  const departureTime = String(body.departureTime || "").trim();
+  const flightDate = String(body.flightDate || "").trim();
+  const durationMinutes = Math.round(Number(body.durationMinutes));
+  const fleet = user.aircraft.split(",").map((s) => s.trim()).filter(Boolean);
+
+  // Validation.
+  const isPort = (v: string) => /^[A-Z]{3,4}$/.test(v);
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(flightDate) && !Number.isNaN(Date.parse(`${flightDate}T00:00:00Z`));
+  const timeOk = /^([01]\d|2[0-3]):[0-5]\d$/.test(departureTime);
+
+  if (!isPort(departure) || !isPort(arrival)) {
+    res.status(400).json({ error: "Enter valid 3–4 letter airport codes for departure and arrival." });
+    return;
+  }
+  if (departure === arrival) {
+    res.status(400).json({ error: "Departure and arrival must be different airports." });
+    return;
+  }
+  if (!fleet.includes(aircraft)) {
+    res.status(400).json({ error: `You can only fly your assigned aircraft: ${fleet.join(", ") || "none"}.` });
+    return;
+  }
+  if (!timeOk) { res.status(400).json({ error: "Departure time must be HH:MM (24h, UTC)." }); return; }
+  if (!dateOk) { res.status(400).json({ error: "Flight date must be a valid YYYY-MM-DD." }); return; }
+  if (!Number.isFinite(durationMinutes) || durationMinutes < 10 || durationMinutes > 900) {
+    res.status(400).json({ error: "Duration must be between 10 and 900 minutes." });
+    return;
+  }
+
+  // Flight number: use the pilot's (cleaned) or generate one.
+  let flightNumber = String(body.flightNumber || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  if (!flightNumber) flightNumber = `JQ${Math.floor(Math.random() * 900) + 100}`;
+
+  const departsAt = new Date(`${flightDate}T${departureTime}:00Z`);
+
+  const [flight] = await db.insert(flightsTable).values({
+    flightNumber,
+    departure,
+    arrival,
+    aircraft,
+    departureTime,
+    flightDate,
+    durationMinutes,
+    departsAt,
+  }).returning();
+
+  const [entry] = await db.insert(timetableTable).values({
+    userId: req.session.userId,
+    flightId: flight.id,
+    status: "pending",
+  }).returning();
+
+  const entries = await getTimetableWithFlights(req.session.userId);
+  const created = entries.find((e) => e.id === entry.id);
+  res.status(201).json(created);
+});
+
 router.post("/timetable/:id/start", async (req, res): Promise<void> => {
   if (!req.session.userId) {
     res.status(401).json({ error: "Not authenticated" });
