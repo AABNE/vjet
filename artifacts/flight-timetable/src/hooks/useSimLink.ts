@@ -25,6 +25,8 @@ interface SimLinkBridge {
   onStatus?: (cb: (connected: boolean) => void) => void;
   onHours?: (cb: (hours: number) => void) => void;
   onSession?: (cb: (s: SimSession) => void) => void;
+  // Fired when the app detects a teleport / reposition and starts a fresh trail.
+  onTrailReset?: (cb: (startPt: [number, number]) => void) => void;
   getStatus?: () => Promise<{
     connected: boolean; hours: number; latest: SimPosition | null;
     trail?: [number, number][]; distanceNm?: number; airborneSec?: number;
@@ -52,6 +54,9 @@ export interface SimLinkState {
   // The full flight path so far, seeded from the desktop app on mount so it
   // survives navigating away from the Live Map and back.
   initialTrail: [number, number][];
+  // Increments whenever the app reports a teleport — the Live Map clears its
+  // trail and starts a new one.
+  trailResetToken: number;
 }
 
 // Subscribes to live telemetry from the desktop app. In a normal browser this
@@ -63,6 +68,7 @@ export function useSimLink(): SimLinkState {
   const [hours, setHours] = useState<number | null>(null);
   const [session, setSession] = useState<SimSession>({ distanceNm: 0, airborneSec: 0 });
   const [initialTrail, setInitialTrail] = useState<[number, number][]>([]);
+  const [trailResetToken, setTrailResetToken] = useState(0);
   const bound = useRef(false);
 
   useEffect(() => {
@@ -74,6 +80,7 @@ export function useSimLink(): SimLinkState {
     b.onPosition?.((p) => { setPosition(p); setConnected(true); });
     b.onHours?.((h) => setHours(h));
     b.onSession?.((s) => setSession(s));
+    b.onTrailReset?.(() => setTrailResetToken((t) => t + 1));
     b.getStatus?.().then((s) => {
       if (!s) return;
       setConnected(!!s.connected);
@@ -84,5 +91,5 @@ export function useSimLink(): SimLinkState {
     }).catch(() => { /* ignore */ });
   }, []);
 
-  return { isApp, connected, position, hours, session, initialTrail };
+  return { isApp, connected, position, hours, session, initialTrail, trailResetToken };
 }

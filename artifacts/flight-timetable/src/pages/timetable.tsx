@@ -81,12 +81,12 @@ export default function Timetable() {
 
   // ── Auto flight timer status (desktop app only) ──
   // The firing logic lives in the app-wide <AutoFlightTimer>: when the Sim Link
-  // desktop app is connected to MSFS, the timer starts when the parking brake is
-  // released at the gate and finishes when it's set again on arrival. Here we
+  // desktop app is connected to MSFS, the timer starts when the aircraft first
+  // rolls from the gate and finishes once it's flown and parked again. Here we
   // just surface what it's doing. Without the app, the manual buttons do it.
   const { isApp, connected, position } = useSimLink();
-  const brake = position?.parkingBrake;
-  const autoMode = Boolean(isApp && connected && brake !== undefined);
+  const moving = (position?.groundSpeedKt ?? 0) > 1;
+  const autoMode = Boolean(isApp && connected);
 
   // The flight the brake controls: the active one, else the earliest pending
   // (same choice <AutoFlightTimer> makes).
@@ -126,16 +126,16 @@ export default function Timetable() {
       {autoMode && (
         <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-[#e5e7eb] bg-white px-4 py-3" data-testid="status-auto-timer">
           <span className="inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#1a1a1a]">
-            <span className={`h-2.5 w-2.5 rounded-full ${brake ? "bg-red-500" : "bg-green-500"}`} />
-            Parking brake {brake ? "set" : "released"}
+            <span className={`h-2.5 w-2.5 rounded-full ${!position ? "bg-[#d8a33a]" : moving ? "bg-green-500" : "bg-[#9ca3af]"}`} />
+            {!position ? "Waiting for MSFS" : moving ? "Aircraft moving" : "Aircraft stopped"}
           </span>
           <span className="text-xs text-[#6b7280]">
             {active ? (
-              <>Auto-timer running on <b className="text-[#1a1a1a]">{active.flight.flightNumber}</b> — set the brake after landing to finish.</>
+              <>Auto-timer running on <b className="text-[#1a1a1a]">{active.flight.flightNumber}</b> — park at the gate to finish.</>
             ) : nextPending ? (
-              <>Release the brake at the gate to auto-start <b className="text-[#1a1a1a]">{nextPending.flight.flightNumber}</b>.</>
+              <>Roll from the gate and <b className="text-[#1a1a1a]">{nextPending.flight.flightNumber}</b> starts automatically.</>
             ) : (
-              <>Pick up a sector and the brake will run its timer automatically.</>
+              <>Pick up a sector and it starts the moment you roll from the gate.</>
             )}
           </span>
         </div>
@@ -216,12 +216,12 @@ export default function Timetable() {
                           <ExternalLink className="h-3.5 w-3.5" />SimBrief
                         </a>
                       )}
-                      {/* Auto chip — brake controls this sector (desktop app only) */}
+                      {/* Auto chip — the app runs this timer from aircraft movement */}
                       {isAuto && (
-                        <span data-testid={`chip-auto-${entry.id}`} title="The desktop app runs this timer from your parking brake"
+                        <span data-testid={`chip-auto-${entry.id}`} title="The desktop app runs this timer from aircraft movement"
                           className="inline-flex items-center gap-1.5 rounded-xl border border-[#fb5713]/30 bg-[#fff7ed] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#fb5713]">
-                          <span className={`h-2 w-2 rounded-full ${brake ? "bg-red-500" : "bg-green-500"}`} />
-                          Auto · brake
+                          <span className={`h-2 w-2 rounded-full ${moving ? "bg-green-500" : "bg-[#9ca3af]"}`} />
+                          Auto
                         </span>
                       )}
                       {isActive ? (

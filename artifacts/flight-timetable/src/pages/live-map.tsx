@@ -49,7 +49,7 @@ function Stat({ icon: Icon, label, value, unit }: { icon: any; label: string; va
 
 export default function LiveMap() {
   const { user } = useAuth();
-  const { connected, position, session, initialTrail } = useSimLink();
+  const { connected, position, session, initialTrail, trailResetToken } = useSimLink();
 
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -85,6 +85,15 @@ export default function LiveMap() {
     const last = trailPts.current[trailPts.current.length - 1];
     if (last && firstFix.current) { mapRef.current.setView(last, 8); firstFix.current = false; }
   }, [initialTrail]);
+
+  // Teleport / reposition detected → wipe the trail and start a fresh one.
+  useEffect(() => {
+    if (trailResetToken === 0) return;
+    trailPts.current = [];
+    trailRef.current?.setLatLngs([]);
+    firstFix.current = true;      // recenter on the new location
+    seeded.current = true;        // don't re-seed the stale pre-teleport trail
+  }, [trailResetToken]);
 
   // Update map on each fix.
   useEffect(() => {
