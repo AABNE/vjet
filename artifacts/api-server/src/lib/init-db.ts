@@ -36,8 +36,11 @@ export async function initDb(): Promise<void> {
         "departure_time"   TEXT NOT NULL,
         "flight_date"      TEXT NOT NULL,
         "duration_minutes" INTEGER NOT NULL,
+        "departs_at"       TIMESTAMPTZ,
         "created_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE "flights" ADD COLUMN IF NOT EXISTS "departs_at" TIMESTAMPTZ;
 
       CREATE TABLE IF NOT EXISTS "timetable" (
         "id"                      SERIAL PRIMARY KEY,

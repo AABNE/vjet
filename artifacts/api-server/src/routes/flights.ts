@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, flightsTable, timetableTable, usersTable, eq, inArray } from "@workspace/db";
 import { GetAvailableFlightsResponse } from "@workspace/api-zod";
-import { isAvailableAt } from "../lib/route-scheduler";
+import { isFlightAvailable } from "../lib/route-scheduler";
 
 const router: IRouter = Router();
 
@@ -17,7 +17,7 @@ router.get("/flights", async (req, res): Promise<void> => {
     .where(aircraftTypes.length === 1
       ? eq(flightsTable.aircraft, aircraftTypes[0])
       : inArray(flightsTable.aircraft, aircraftTypes))
-    .orderBy(flightsTable.departureTime);
+    .orderBy(flightsTable.flightDate, flightsTable.departureTime);
 
   // Routes already in anyone's active/pending timetable disappear
   const takenEntries = await db.select().from(timetableTable);
@@ -29,8 +29,8 @@ router.get("/flights", async (req, res): Promise<void> => {
 
   const available = allFlights.filter(f => {
     if (takenFlightIds.has(f.id)) return false;
-    // Hide routes within 30 minutes of (or past) their scheduled UTC departure.
-    return isAvailableAt(f.flightDate, f.departureTime, now);
+    // Hide routes within 30 minutes of (or past) their scheduled departure.
+    return isFlightAvailable(f, now);
   });
 
   res.json(GetAvailableFlightsResponse.parse(

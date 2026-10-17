@@ -7,10 +7,14 @@ export const flightsTable = pgTable("flights", {
   flightNumber: text("flight_number").notNull(),
   departure: text("departure").notNull(),
   arrival: text("arrival").notNull(),
-  aircraft: text("aircraft").notNull(), // "737", "777", "A320"
-  departureTime: text("departure_time").notNull(), // e.g. "06:30"
-  flightDate: text("flight_date").notNull(), // e.g. "2026-04-05"
+  aircraft: text("aircraft").notNull(), // "A320", "A20N", "A21N", "B788"
+  departureTime: text("departure_time").notNull(), // origin LOCAL time, e.g. "06:30"
+  flightDate: text("flight_date").notNull(), // origin LOCAL date, e.g. "2026-04-05"
   durationMinutes: integer("duration_minutes").notNull(),
+  // True UTC departure instant (set for generated schedule flights). The 30-min
+  // cutoff is computed from this so it's correct regardless of the origin's
+  // timezone/DST. Nullable for legacy rows that only have local date + time.
+  departsAt: timestamp("departs_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
