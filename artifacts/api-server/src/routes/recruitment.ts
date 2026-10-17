@@ -642,4 +642,107 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
   })();
 });
 
+// ── GET /api/recruitment-diagnostics ─────────────────────────────────────────
+// Self-check for the role automation. Open in a browser:
+//   https://<your-domain>/api/recruitment-diagnostics?key=<DISCORD_PUBLIC_KEY>
+// It reports whether the bot can actually manage each configured role — the
+// usual reason a role removal silently does nothing is that the bot's own role
+// sits below the target role, or the bot lacks Manage Roles.
+const PERM_ADMINISTRATOR = 1n << 3n;
+const PERM_MANAGE_ROLES = 1n << 28n;
+
+router.get("/recruitment-diagnostics", async (req: Request, res: Response): Promise<void> => {
+  const token = process.env["DISCORD_BOT_TOKEN"];
+  const publicKey = process.env["DISCORD_PUBLIC_KEY"];
+  const guildId = process.env["DISCORD_GUILD_ID"];
+
+  // Simple auth: the caller must know the app's public key (an admin-only value).
+  if (!publicKey || String(req.query["key"] || "") !== publicKey) {
+    res.status(403).json({ error: "Forbidden. Append ?key=<DISCORD_PUBLIC_KEY>." });
+    return;
+  }
+  if (!token) { res.status(503).json({ error: "DISCORD_BOT_TOKEN not set." }); return; }
+  if (!guildId) { res.status(503).json({ error: "DISCORD_GUILD_ID not set." }); return; }
+
+  const authHeader = { Authorization: `Bot ${token}`, "User-Agent": USER_AGENT };
+
+  try {
+    // Who is the bot?
+    const meRes = await fetch(`${DISCORD_API}/users/@me`, { headers: authHeader });
+    if (!meRes.ok) { res.status(502).json({ error: `Could not fetch bot user (HTTP ${meRes.status}). Is DISCORD_BOT_TOKEN a valid bot token?` }); return; }
+    const me = (await meRes.json()) as { id: string; username: string };
+
+    // All roles in the guild (with positions + permissions).
+    const rolesRes = await fetch(`${DISCORD_API}/guilds/${guildId}/roles`, { headers: authHeader });
+    if (!rolesRes.ok) {
+      res.status(502).json({ error: `Could not fetch guild roles (HTTP ${rolesRes.status}). Is the bot in the server and is DISCORD_GUILD_ID correct?` });
+      return;
+    }
+    const allRoles = (await rolesRes.json()) as Array<{ id: string; name: string; position: number; permissions: string }>;
+
+    // The bot's own member record → which roles it has.
+    const memberRes = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${me.id}`, { headers: authHeader });
+    if (!memberRes.ok) {
+      res.status(502).json({ error: `Bot is not a member of guild ${guildId} (HTTP ${memberRes.status}). Re-invite the bot to the server.` });
+      return;
+    }
+    const member = (await memberRes.json()) as { roles: string[] };
+
+    const byId = new Map(allRoles.map((r) => [r.id, r]));
+    const botRoles = member.roles.map((id) => byId.get(id)).filter(Boolean) as typeof allRoles;
+    const botHighest = botRoles.reduce((max, r) => Math.max(max, r.position), 0);
+
+    // Does the bot have Manage Roles (or Administrator) anywhere?
+    let perms = 0n;
+    for (const r of botRoles) { try { perms |= BigInt(r.permissions); } catch { /* skip */ } }
+    // @everyone role carries base permissions too.
+    const everyone = byId.get(guildId);
+    if (everyone) { try { perms |= BigInt(everyone.permissions); } catch { /* skip */ } }
+    const hasManageRoles = (perms & PERM_MANAGE_ROLES) !== 0n || (perms & PERM_ADMINISTRATOR) !== 0n;
+
+    const configured = {
+      ROLE_NO_APPLICATION_ID: process.env["ROLE_NO_APPLICATION_ID"],
+      ROLE_ACCEPTED_ID: process.env["ROLE_ACCEPTED_ID"],
+      ROLE_PILOT_ID: process.env["ROLE_PILOT_ID"],
+    };
+
+    const report = Object.entries(configured).map(([envName, roleId]) => {
+      if (!roleId) return { envName, set: false, note: "not set" };
+      const role = byId.get(roleId);
+      if (!role) return { envName, set: true, roleId, found: false, note: "No role with this ID exists in the server — wrong ID." };
+      const manageable = hasManageRoles && botHighest > role.position;
+      return {
+        envName,
+        set: true,
+        roleId,
+        found: true,
+        roleName: role.name,
+        rolePosition: role.position,
+        manageable,
+        note: manageable
+          ? "OK — the bot can add/remove this role."
+          : !hasManageRoles
+            ? "Bot is missing the Manage Roles permission."
+            : `Bot CANNOT manage this role: its position (${role.position}) is at or above the bot's highest role (${botHighest}). Move the bot's role ABOVE this one in Server Settings → Roles.`,
+      };
+    });
+
+    const problems = report.filter((r) => r.set && r.found === true && r.manageable === false);
+    res.json({
+      bot: { id: me.id, username: me.username, highestRolePosition: botHighest, hasManageRoles },
+      roles: report,
+      verdict: !hasManageRoles
+        ? "❌ The bot lacks Manage Roles. Give its role the Manage Roles permission."
+        : problems.length
+          ? "❌ The bot's role is too low to manage one or more configured roles. Drag the bot's role ABOVE them in Server Settings → Roles."
+          : report.some((r) => r.set && r.found === false)
+            ? "❌ One or more role IDs don't match any role in the server — check the env values."
+            : "✅ The bot can manage all configured roles. If a role still isn't changing, check the Render logs for the 'role change' lines.",
+    });
+  } catch (err) {
+    logger.error({ err }, "recruitment-diagnostics failed");
+    res.status(502).json({ error: "Diagnostics failed — see server logs." });
+  }
+});
+
 export default router;
