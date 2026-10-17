@@ -4,9 +4,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
-import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X } from "lucide-react";
+import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar } from "lucide-react";
 import { VJetstarLogo } from "@/components/VJetstarLogo";
 import { useEffect, useState } from "react";
+import { useIsDesktopApp } from "@/hooks/useSimLink";
 import Login from "@/pages/login";
 import Timetable from "@/pages/timetable";
 import Flights from "@/pages/flights";
@@ -14,6 +15,7 @@ import Logs from "@/pages/logs";
 import Admin from "@/pages/admin";
 import Settings from "@/pages/settings";
 import Software from "@/pages/software";
+import LiveMap from "@/pages/live-map";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -24,6 +26,11 @@ const navItems = [
   { href: "/logs",       label: "Flight records",    icon: ClipboardList },
   { href: "/software",   label: "Software",          icon: Download },
   { href: "/settings",   label: "Settings",          icon: Settings2 },
+];
+
+// Only shown when the hub runs inside the vJetstar Sim Link desktop app.
+const appOnlyNavItems = [
+  { href: "/live-map", label: "Live map", icon: Radar },
 ];
 
 function JetstarStar({ size = 20 }: { size?: number }) {
@@ -211,6 +218,11 @@ function Layout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [path, setPath] = useLocation();
   const qc = useQueryClient();
+  const isApp = useIsDesktopApp();
+  // In the desktop app, surface the Live map between Available routes and records.
+  const displayedNav = isApp
+    ? [navItems[0], navItems[1], ...appOnlyNavItems, ...navItems.slice(2)]
+    : navItems;
   const logout = useLogout({
     mutation: {
       onSuccess: () => {
@@ -278,7 +290,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <div className="mx-auto flex max-w-[1500px] flex-col md:min-h-[calc(100dvh-64px)] md:flex-row">
         <aside className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-[#e5e7eb] bg-white p-2 md:w-[220px] md:flex-col md:gap-1 md:border-b-0 md:border-r md:p-4">
           <div className="hidden px-3 pb-2 pt-3 font-mono text-[9px] font-bold uppercase tracking-[.24em] text-[#9ca3af] md:block">Flight deck</div>
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {displayedNav.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`}
               className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
                 path === href ? "bg-[#fb5713] text-white" : "text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#1a1a1a]"
@@ -337,6 +349,7 @@ function Router() {
         <Route path="/flights"  component={Flights} />
         <Route path="/logs"     component={Logs} />
         <Route path="/software" component={Software} />
+        <Route path="/live-map" component={LiveMap} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>
