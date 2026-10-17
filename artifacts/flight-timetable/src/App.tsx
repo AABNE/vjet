@@ -15,10 +15,9 @@ import Logs from "@/pages/logs";
 import Admin from "@/pages/admin";
 import Settings from "@/pages/settings";
 import Liveries from "@/pages/liveries";
+import Software from "@/pages/software";
 import LiveMap from "@/pages/live-map";
 import NotFound from "@/pages/not-found";
-
-const SIMLINK_DOWNLOAD = "https://github.com/AABNE/vjet/releases/latest";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
 
@@ -33,6 +32,11 @@ const navItems = [
 // Only shown when the hub runs inside the vJetstar Sim Link desktop app.
 const appOnlyNavItems = [
   { href: "/live-map", label: "Live map", icon: Radar },
+];
+
+// Only shown on the website (not inside the desktop app — you're already in it).
+const webOnlyNavItems = [
+  { href: "/software", label: "Software", icon: Download },
 ];
 
 function JetstarStar({ size = 20 }: { size?: number }) {
@@ -221,10 +225,11 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [path, setPath] = useLocation();
   const qc = useQueryClient();
   const isApp = useIsDesktopApp();
-  // In the desktop app, surface the Live map between Available routes and records.
+  // In the app: show Live map (and hide Software — you're already in the app).
+  // On the website: show Software (download the app), no Live map.
   const displayedNav = isApp
     ? [navItems[0], navItems[1], ...appOnlyNavItems, ...navItems.slice(2)]
-    : navItems;
+    : [...navItems.slice(0, 4), ...webOnlyNavItems, navItems[4]];
   const logout = useLogout({
     mutation: {
       onSuccess: () => {
@@ -316,11 +321,6 @@ function Layout({ children }: { children: React.ReactNode }) {
           )}
 
           <div className="mt-auto hidden border-t border-[#f3f4f6] pt-4 md:block">
-            <a href={SIMLINK_DOWNLOAD} target="_blank" rel="noopener noreferrer"
-              className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-[#1a1a1a]">
-              <Download className="h-4 w-4" />
-              Desktop app <span className="rounded-full bg-[#fb5713] px-1.5 py-0.5 text-[8px] font-black uppercase text-white">Beta</span>
-            </a>
             <button data-testid="button-sign-out" onClick={() => logout.mutate()} disabled={logout.isPending}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-[#1a1a1a]">
               <LogOut className="h-4 w-4" />
@@ -356,6 +356,7 @@ function Router() {
         <Route path="/flights"  component={Flights} />
         <Route path="/logs"     component={Logs} />
         <Route path="/liveries" component={Liveries} />
+        <Route path="/software" component={Software} />
         <Route path="/live-map" component={LiveMap} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
