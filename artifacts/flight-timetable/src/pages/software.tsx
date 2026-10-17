@@ -22,14 +22,13 @@ const SOFTWARE = [
       "System tray — keeps your sim hours in sync",
       "Works with MSFS 2020 and MSFS 2024",
     ],
-    downloadUrl: "/downloads/vJetstarSimLink-Setup-Beta.zip",
-    downloadLabel: "Download Beta (.zip)",
-    size: "~90 MB",
+    downloadUrl: "https://github.com/AABNE/vjet/releases/download/v1.0.0-beta/vJetstar.Sim.Link.Setup.1.0.0.exe",
+    downloadLabel: "Download Beta (.exe)",
+    size: "112 MB",
     icon: Activity,
     accent: "#fb5713",
     beta: true,
-    // Flip to false once the beta installer zip is uploaded to public/downloads.
-    comingSoon: true,
+    comingSoon: false,
   },
 ];
 
@@ -130,7 +129,7 @@ export default function Software() {
                       </>
                     ) : (
                       <>
-                        <a href={app.downloadUrl} download
+                        <a href={app.downloadUrl} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#e04d0e]">
                           <Download className="h-4 w-4" />{app.downloadLabel}
                         </a>
@@ -146,7 +145,7 @@ export default function Software() {
                     {app.comingSoon ? (
                       <><span className="font-bold text-[#6b7280]">Heads up:</span> Sim Link is still in development — the installer will appear here once it's ready.</>
                     ) : (
-                      <><span className="font-bold text-[#6b7280]">Install note:</span> Requires Microsoft Flight Simulator to be running. SimConnect is included with MSFS — no extra setup needed. Run installer as administrator.</>
+                      <><span className="font-bold text-[#6b7280]">Install note:</span> Beta build — it isn't code-signed yet, so Windows SmartScreen may warn: click "More info" → "Run anyway". SimConnect is included with MSFS; no extra setup needed.</>
                     )}
                   </p>
                 </div>
