@@ -98,6 +98,9 @@ export default function Dispatch() {
   const recog = useRef<any>(null);
   const [voice, setVoice] = useState(() => voiceForUser(user?.username));
   const [voiceLabel, setVoiceLabel] = useState("");
+  // A random seed per shift → a random dispatcher voice (stable through this
+  // conversation, re-rolled on New shift).
+  const [voiceSeed, setVoiceSeed] = useState(() => Math.random().toString(36).slice(2));
   const storeKey = user?.username ? `vjet-dispatch-${user.username}` : null;
 
   useEffect(() => { setVoice(voiceForUser(user?.username)); }, [user?.username]);
@@ -130,7 +133,7 @@ export default function Dispatch() {
     if (mode !== "call") return;
     setSpeaking(true);
     try {
-      const r = await speak(reply, user?.username || "pilot");
+      const r = await speak(reply, voiceSeed);
       if (r.voiceName) setVoiceLabel(r.voiceName);
       setVoiceWarn(r.ok ? "" : (r.reason || ""));
     } finally { setSpeaking(false); }
@@ -194,13 +197,15 @@ export default function Dispatch() {
 
   function clearChat() {
     stopSpeaking();
+    setVoiceSeed(Math.random().toString(36).slice(2)); // new shift → new random voice
+    setVoiceLabel("");
     setMessages([{ role: "assistant", content: GREETING }]);
     if (storeKey) { try { localStorage.removeItem(storeKey); } catch { /* */ } }
   }
 
   async function testVoice() {
     setSpeaking(true);
-    const r = await speak("Dispatch radio check — reading you five by five.", user?.username || "pilot");
+    const r = await speak("Dispatch radio check — reading you five by five.", voiceSeed);
     if (r.voiceName) setVoiceLabel(r.voiceName);
     setSpeaking(false);
     setVoiceWarn(r.ok ? "" : (r.reason || "Voice unavailable."));
