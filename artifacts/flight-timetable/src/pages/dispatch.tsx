@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
 import { apiGet, apiPost } from "@/lib/api";
-import { dispatchChat, speak, stopSpeaking, hasPuter, randomVoice } from "@/lib/puter";
+import { dispatchChat } from "@/lib/puter";
+import { speak, stopSpeaking, voiceForUser } from "@/lib/voice";
 import {
   Radio, Send, Phone, PhoneOff, Mic, DownloadCloud, CheckCircle2, ShieldAlert,
   Plane, MapPin, Fuel, Cloud, Route as RouteIcon, Loader2, Volume2,
@@ -92,9 +93,12 @@ export default function Dispatch() {
   const scroller = useRef<HTMLDivElement | null>(null);
   const [listening, setListening] = useState(false);
   const [callNote, setCallNote] = useState("");
+  const [voiceWarn, setVoiceWarn] = useState("");
   const recog = useRef<any>(null);
-  const voice = useRef(randomVoice());
+  const [voice, setVoice] = useState(() => voiceForUser(user?.username));
   const storeKey = user?.username ? `vjet-dispatch-${user.username}` : null;
+
+  useEffect(() => { setVoice(voiceForUser(user?.username)); }, [user?.username]);
 
   const recogOk = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
@@ -123,7 +127,10 @@ export default function Dispatch() {
   async function say(reply: string) {
     if (mode !== "call") return;
     setSpeaking(true);
-    try { await speak(reply, voice.current.id); } finally { setSpeaking(false); }
+    try {
+      const r = await speak(reply, voice.id);
+      setVoiceWarn(r.ok ? "" : (r.reason || ""));
+    } finally { setSpeaking(false); }
   }
 
   async function send(text: string) {
@@ -134,7 +141,7 @@ export default function Dispatch() {
     setInput("");
     setSending(true);
     try {
-      const system = buildSystemPrompt(user, entry, voice.current.name);
+      const system = buildSystemPrompt(user, entry, voice.name);
       const payload = [{ role: "system" as const, content: system }, ...next.slice(-16)];
       const reply = await dispatchChat(payload);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
@@ -184,7 +191,6 @@ export default function Dispatch() {
 
   function clearChat() {
     stopSpeaking();
-    voice.current = randomVoice();
     setMessages([{ role: "assistant", content: GREETING }]);
     if (storeKey) { try { localStorage.removeItem(storeKey); } catch { /* */ } }
   }
@@ -216,7 +222,7 @@ export default function Dispatch() {
           <div className="flex items-center justify-between border-b border-[#f3f4f6] bg-[#1a1a1a] px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" /></span>
-              <span className="font-mono text-[11px] font-bold uppercase tracking-widest">Dispatch · {voice.current.name}</span>
+              <span className="font-mono text-[11px] font-bold uppercase tracking-widest">Dispatch · {voice.name}</span>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={clearChat} title="New shift (clears memory)" className="font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80">New shift</button>
@@ -339,8 +345,8 @@ export default function Dispatch() {
             ) : <p className="mt-3 text-sm text-[#6b7280]">Clean record.</p>}
           </div>
 
-          {!hasPuter() && (
-            <p className="px-1 text-[10px] leading-relaxed text-[#9ca3af]">Voices use Puter (free). If it's blocked here, dispatch falls back to your browser voice. First call may ask you to sign in to Puter.</p>
+          {voiceWarn && (
+            <p className="px-1 text-[10px] leading-relaxed text-[#d08700]">{voiceWarn}</p>
           )}
         </aside>
       </div>

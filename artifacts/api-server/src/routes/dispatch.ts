@@ -7,6 +7,19 @@ const router: IRouter = Router();
 
 const OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free";
 
+// ElevenLabs premade voices — a spread of accents/genders so dispatchers differ.
+const ELEVEN_VOICES = [
+  "21m00Tcm4TlvDq8ikWAM", // Rachel
+  "AZnzlk1XvdvUeBnXmlld", // Domi
+  "EXAVITQu4vr4xnSDxMaL", // Bella
+  "ErXwobaYiN019PkySvjV", // Antoni
+  "TxGEqnHWrfWFTfGW9XjX", // Josh
+  "VR6AewLTigWG4xSOukaG", // Arnold
+  "pNInz6obpgDQGcFmaJgB", // Adam
+  "yoZ06aMxZJJ28mfd3POQ", // Sam
+  "MF3mGyEYCl7XYWbV9V6O", // Elli
+];
+
 async function requireUser(req: any, res: any) {
   if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return null; }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId));
@@ -288,6 +301,56 @@ router.post("/dispatch/chat", async (req, res): Promise<void> => {
   } catch (e) {
     req.log?.warn?.({ err: e }, "OpenRouter request failed");
     res.status(502).json({ error: "Dispatch is unreachable right now. Try again shortly." });
+  }
+});
+
+// POST /api/dispatch/tts — proxy to the real ElevenLabs API and stream back MP3,
+// so dispatch speaks with a natural voice and the API key stays server-side.
+router.post("/dispatch/tts", async (req, res): Promise<void> => {
+  const user = await requireUser(req, res); if (!user) return;
+
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) {
+    res.status(503).json({ error: "Voice isn't configured — add ELEVENLABS_API_KEY on the server." });
+    return;
+  }
+
+  const text = String(req.body?.text ?? "").trim().slice(0, 900);
+  if (!text) { res.status(400).json({ error: "No text to speak." }); return; }
+
+  const reqVoice = typeof req.body?.voiceId === "string" ? req.body.voiceId : "";
+  const voiceId = ELEVEN_VOICES.includes(reqVoice) ? reqVoice : ELEVEN_VOICES[0];
+
+  try {
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": key,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_turbo_v2_5",
+        voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      req.log?.warn?.({ status: r.status, detail }, "ElevenLabs error");
+      res.status(r.status === 401 ? 502 : 502).json({
+        error: r.status === 401 ? "ElevenLabs rejected the API key." : `Voice error (${r.status}).`,
+      });
+      return;
+    }
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(buf);
+  } catch (e) {
+    req.log?.warn?.({ err: e }, "ElevenLabs request failed");
+    res.status(502).json({ error: "Voice service unreachable." });
   }
 });
 
