@@ -7,18 +7,48 @@ const router: IRouter = Router();
 
 const OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free";
 
-// ElevenLabs premade voices — a spread of accents/genders so dispatchers differ.
-const ELEVEN_VOICES = [
-  "21m00Tcm4TlvDq8ikWAM", // Rachel
-  "AZnzlk1XvdvUeBnXmlld", // Domi
-  "EXAVITQu4vr4xnSDxMaL", // Bella
-  "ErXwobaYiN019PkySvjV", // Antoni
-  "TxGEqnHWrfWFTfGW9XjX", // Josh
-  "VR6AewLTigWG4xSOukaG", // Arnold
-  "pNInz6obpgDQGcFmaJgB", // Adam
-  "yoZ06aMxZJJ28mfd3POQ", // Sam
-  "MF3mGyEYCl7XYWbV9V6O", // Elli
+// Fallback premade voice IDs, used only if we can't read the account's library.
+const FALLBACK_VOICES: { voice_id: string; name: string }[] = [
+  { voice_id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel" },
+  { voice_id: "AZnzlk1XvdvUeBnXmlld", name: "Domi" },
+  { voice_id: "EXAVITQu4vr4xnSDxMaL", name: "Bella" },
+  { voice_id: "ErXwobaYiN019PkySvjV", name: "Antoni" },
+  { voice_id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh" },
+  { voice_id: "VR6AewLTigWG4xSOukaG", name: "Arnold" },
+  { voice_id: "pNInz6obpgDQGcFmaJgB", name: "Adam" },
+  { voice_id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam" },
+  { voice_id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli" },
 ];
+
+// Cache the account's actual voice library so we only pick IDs that exist there.
+let voicesCache: { at: number; voices: { voice_id: string; name: string }[] } | null = null;
+async function accountVoices(key: string): Promise<{ voices: { voice_id: string; name: string }[]; error?: string }> {
+  if (voicesCache && Date.now() - voicesCache.at < 600_000) return { voices: voicesCache.voices };
+  try {
+    const r = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: { "xi-api-key": key, "Accept": "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) {
+      const detail = (await r.text().catch(() => "")).slice(0, 200);
+      return { voices: FALLBACK_VOICES, error: `voices list ${r.status}: ${detail}` };
+    }
+    const d = await r.json() as any;
+    const voices = Array.isArray(d?.voices)
+      ? d.voices.map((v: any) => ({ voice_id: String(v.voice_id), name: String(v.name ?? v.voice_id) })).filter((v: any) => v.voice_id)
+      : [];
+    if (voices.length === 0) return { voices: FALLBACK_VOICES };
+    voicesCache = { at: Date.now(), voices };
+    return { voices };
+  } catch {
+    return { voices: FALLBACK_VOICES, error: "voices list unreachable" };
+  }
+}
+function pickVoice(voices: { voice_id: string; name: string }[], seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return voices[h % voices.length];
+}
 
 async function requireUser(req: any, res: any) {
   if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return null; }
@@ -324,35 +354,42 @@ router.post("/dispatch/tts", async (req, res): Promise<void> => {
   const text = String(req.body?.text ?? "").trim().slice(0, 900);
   if (!text) { res.status(400).json({ error: "No text to speak." }); return; }
 
-  const reqVoice = typeof req.body?.voiceId === "string" ? req.body.voiceId : "";
-  const voiceId = ELEVEN_VOICES.includes(reqVoice) ? reqVoice : ELEVEN_VOICES[0];
+  const seed = String(req.body?.seed || user.username || "pilot");
+  const { voices, error: voicesErr } = await accountVoices(key);
+  const chosen = pickVoice(voices, seed);
 
-  try {
-    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+  const callTTS = (model: string) => fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${chosen.voice_id}?output_format=mp3_44100_128`,
+    {
       method: "POST",
-      headers: {
-        "xi-api-key": key,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg",
-      },
+      headers: { "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg" },
       body: JSON.stringify({
         text,
-        model_id: "eleven_turbo_v2_5",
+        model_id: model,
         voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
       }),
       signal: AbortSignal.timeout(30_000),
-    });
+    },
+  );
+
+  try {
+    let r = await callTTS("eleven_turbo_v2_5");
+    if (!r.ok && (r.status === 400 || r.status === 422)) {
+      r = await callTTS("eleven_multilingual_v2"); // model not enabled on plan → try the standard one
+    }
     if (!r.ok) {
-      const detail = await r.text().catch(() => "");
-      req.log?.warn?.({ status: r.status, detail }, "ElevenLabs error");
-      res.status(r.status === 401 ? 502 : 502).json({
-        error: r.status === 401 ? "ElevenLabs rejected the API key." : `Voice error (${r.status}).`,
+      const detail = (await r.text().catch(() => "")).slice(0, 300);
+      req.log?.warn?.({ status: r.status, detail, voicesErr }, "ElevenLabs TTS error");
+      res.status(502).json({
+        error: r.status === 401 ? "ElevenLabs rejected the API key (check it has text-to-speech permission)." : `Voice error (${r.status}).`,
+        detail: detail || voicesErr,
       });
       return;
     }
     const buf = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Voice-Name", encodeURIComponent(chosen.name));
     res.send(buf);
   } catch (e) {
     req.log?.warn?.({ err: e }, "ElevenLabs request failed");

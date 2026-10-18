@@ -97,6 +97,7 @@ export default function Dispatch() {
   const [voiceWarn, setVoiceWarn] = useState("");
   const recog = useRef<any>(null);
   const [voice, setVoice] = useState(() => voiceForUser(user?.username));
+  const [voiceLabel, setVoiceLabel] = useState("");
   const storeKey = user?.username ? `vjet-dispatch-${user.username}` : null;
 
   useEffect(() => { setVoice(voiceForUser(user?.username)); }, [user?.username]);
@@ -129,7 +130,8 @@ export default function Dispatch() {
     if (mode !== "call") return;
     setSpeaking(true);
     try {
-      const r = await speak(reply, voice.id);
+      const r = await speak(reply, user?.username || "pilot");
+      if (r.voiceName) setVoiceLabel(r.voiceName);
       setVoiceWarn(r.ok ? "" : (r.reason || ""));
     } finally { setSpeaking(false); }
   }
@@ -142,7 +144,7 @@ export default function Dispatch() {
     setInput("");
     setSending(true);
     try {
-      const system = buildSystemPrompt(user, entry, voice.name);
+      const system = buildSystemPrompt(user, entry, voiceLabel || voice.name);
       const payload = [{ role: "system" as const, content: system }, ...next.slice(-16)];
       const reply = await dispatchChat(payload);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
@@ -198,7 +200,8 @@ export default function Dispatch() {
 
   async function testVoice() {
     setSpeaking(true);
-    const r = await speak(`${voice.name} on dispatch, radio check — reading you five by five.`, voice.id);
+    const r = await speak("Dispatch radio check — reading you five by five.", user?.username || "pilot");
+    if (r.voiceName) setVoiceLabel(r.voiceName);
     setSpeaking(false);
     setVoiceWarn(r.ok ? "" : (r.reason || "Voice unavailable."));
   }
@@ -237,7 +240,7 @@ export default function Dispatch() {
           <div className="flex items-center justify-between border-b border-[#f3f4f6] bg-[#1a1a1a] px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" /></span>
-              <span className="font-mono text-[11px] font-bold uppercase tracking-widest">Dispatch · {voice.name}</span>
+              <span className="font-mono text-[11px] font-bold uppercase tracking-widest">Dispatch · {voiceLabel || voice.name}</span>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={testVoice} disabled={speaking} title="Play a test line in the dispatcher voice" className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80 disabled:opacity-40"><Volume2 className="h-3 w-3" />Test voice</button>

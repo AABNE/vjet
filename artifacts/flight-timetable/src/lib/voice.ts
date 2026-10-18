@@ -44,30 +44,39 @@ function browserSpeak(text: string): void {
   } catch { /* ignore */ }
 }
 
-export interface SpeakResult { ok: boolean; reason?: string }
+export interface SpeakResult { ok: boolean; reason?: string; voiceName?: string }
 
-export async function speak(text: string, voiceId: string): Promise<SpeakResult> {
+// seed = a per-pilot string (username) so each person gets a distinct, stable voice.
+export async function speak(text: string, seed: string): Promise<SpeakResult> {
   stopSpeaking();
   try {
     const res = await fetch("/api/dispatch/tts", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId }),
+      body: JSON.stringify({ text, seed }),
     });
     if (res.ok) {
+      let voiceName: string | undefined;
+      try { const h = res.headers.get("X-Voice-Name"); if (h) voiceName = decodeURIComponent(h); } catch { /* */ }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       currentUrl = url;
       const audio = new Audio(url);
       currentAudio = audio;
       audio.onended = () => { if (currentUrl === url) { URL.revokeObjectURL(url); currentUrl = null; } };
-      await audio.play();
-      return { ok: true };
+      try {
+        await audio.play();
+      } catch {
+        // Browser blocked autoplay — surface it so the pilot taps to enable.
+        return { ok: false, reason: "Tap Test voice to enable audio (browser blocked autoplay).", voiceName };
+      }
+      return { ok: true, voiceName };
     }
     const d = await res.json().catch(() => ({}));
     browserSpeak(text);
-    return { ok: false, reason: (d as any)?.error || "Voice unavailable — using the browser voice." };
+    const reason = [(d as any)?.error, (d as any)?.detail].filter(Boolean).join(" — ") || "Voice unavailable — using the browser voice.";
+    return { ok: false, reason };
   } catch {
     browserSpeak(text);
     return { ok: false, reason: "Voice service unreachable — using the browser voice." };
