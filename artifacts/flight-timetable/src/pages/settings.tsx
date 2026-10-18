@@ -186,7 +186,7 @@ export default function Settings() {
                 className="h-12 w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 text-sm text-[#1a1a1a] outline-none transition focus:border-[#fb5713] focus:ring-2 focus:ring-[#fb5713]/20 md:max-w-md"
               />
               <span className="mt-2 block text-[11px] text-[#9ca3af]">
-                Your SimBrief Pilot ID (numeric) — find it under SimBrief → Account settings.{" "}
+                Your SimBrief Pilot ID (numeric) or SimBrief/Navigraph username — either works. Find the ID under SimBrief → Account settings.{" "}
                 <a href="https://www.simbrief.com/system/profile.php" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[#fb5713] hover:underline">
                   Open SimBrief <ExternalLink className="h-3 w-3" />
                 </a>

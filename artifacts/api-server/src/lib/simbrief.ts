@@ -91,7 +91,11 @@ export class SimbriefError extends Error {
 
 export async function fetchSimbriefBriefing(username: string): Promise<SimbriefBriefing> {
   const url = new URL("https://www.simbrief.com/api/xml.fetcher.php");
-  url.searchParams.set("username", username);
+  // SimBrief's fetcher takes either a text username or the numeric Pilot ID —
+  // pilots often paste the numeric one, so detect it and use the right param.
+  const id = username.trim();
+  if (/^\d+$/.test(id)) url.searchParams.set("userid", id);
+  else url.searchParams.set("username", id);
   url.searchParams.set("json", "1");
 
   let payload: JsonObject;

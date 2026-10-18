@@ -88,7 +88,10 @@ router.post("/simbrief/import", async (req, res): Promise<void> => {
   let payload: JsonObject;
   try {
     const url = new URL("https://www.simbrief.com/api/xml.fetcher.php");
-    url.searchParams.set("username", user.simbriefUsername);
+    // Accept either a text username or the numeric SimBrief Pilot ID.
+    const sbId = user.simbriefUsername.trim();
+    if (/^\d+$/.test(sbId)) url.searchParams.set("userid", sbId);
+    else url.searchParams.set("username", sbId);
     url.searchParams.set("json", "v2");
     const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) {
