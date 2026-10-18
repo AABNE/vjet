@@ -78,6 +78,7 @@ export default function Dispatch() {
   const { user } = useAuth();
   const state = useQuery<DispatchState>({ queryKey: ["dispatch-state"], queryFn: () => apiGet("/api/dispatch/state"), refetchInterval: 15_000, retry: false });
   const record = useQuery<PilotRecord>({ queryKey: ["pilot-record"], queryFn: () => apiGet("/api/pilot/record"), refetchInterval: 30_000, retry: false });
+  const voiceStatus = useQuery<{ configured: boolean }>({ queryKey: ["voice-status"], queryFn: () => apiGet("/api/dispatch/voice-status"), retry: false });
 
   const entry = state.data?.entry ?? null;
   const ban = state.data?.ban;
@@ -195,6 +196,13 @@ export default function Dispatch() {
     if (storeKey) { try { localStorage.removeItem(storeKey); } catch { /* */ } }
   }
 
+  async function testVoice() {
+    setSpeaking(true);
+    const r = await speak(`${voice.name} on dispatch, radio check — reading you five by five.`, voice.id);
+    setSpeaking(false);
+    setVoiceWarn(r.ok ? "" : (r.reason || "Voice unavailable."));
+  }
+
   const ds = entry?.dispatchStatus ?? "none";
   const hasBriefing = !!entry?.briefing;
   const step = ds === "cleared" ? 3 : ds === "approved" || ds === "requested" ? 2 : hasBriefing ? 1 : 0;
@@ -216,6 +224,13 @@ export default function Dispatch() {
         </div>
       )}
 
+      {voiceStatus.data && !voiceStatus.data.configured && (
+        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]" data-testid="banner-voice-unconfigured">
+          <Volume2 className="mt-0.5 h-5 w-5 shrink-0" />
+          <span>Real dispatcher voices aren't switched on yet — add <code className="rounded bg-black/5 px-1 font-mono text-xs">ELEVENLABS_API_KEY</code> on the server (Render → your API service → Environment). Until then, Call mode uses your browser's built-in voice, which sounds robotic.</span>
+        </div>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         {/* Chat / call */}
         <div className="flex flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white" style={{ height: 580 }}>
@@ -225,6 +240,7 @@ export default function Dispatch() {
               <span className="font-mono text-[11px] font-bold uppercase tracking-widest">Dispatch · {voice.name}</span>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={testVoice} disabled={speaking} title="Play a test line in the dispatcher voice" className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80 disabled:opacity-40"><Volume2 className="h-3 w-3" />Test voice</button>
               <button onClick={clearChat} title="New shift (clears memory)" className="font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80">New shift</button>
               <div className="flex items-center gap-1 rounded-full bg-white/10 p-0.5">
                 <button onClick={() => { stopSpeaking(); setMode("text"); }} className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "text" ? "bg-white text-[#1a1a1a]" : "text-white/70"}`}>Text</button>

@@ -304,6 +304,12 @@ router.post("/dispatch/chat", async (req, res): Promise<void> => {
   }
 });
 
+// GET /api/dispatch/voice-status — is the ElevenLabs key configured?
+router.get("/dispatch/voice-status", async (req, res): Promise<void> => {
+  const user = await requireUser(req, res); if (!user) return;
+  res.json({ configured: !!process.env.ELEVENLABS_API_KEY });
+});
+
 // POST /api/dispatch/tts — proxy to the real ElevenLabs API and stream back MP3,
 // so dispatch speaks with a natural voice and the API key stays server-side.
 router.post("/dispatch/tts", async (req, res): Promise<void> => {
