@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
 import { fetchSimbriefBriefing, SimbriefError, type SimbriefBriefing } from "../lib/simbrief";
 import { notify, getBan, addInfraction } from "../lib/ops";
@@ -7,47 +8,54 @@ const router: IRouter = Router();
 
 const OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free";
 
-// Fallback premade voice IDs, used only if we can't read the account's library.
+// Current ElevenLabs default-library voices (used if we can't read the account's
+// own list). These are the modern IDs every account has — not the legacy ones.
 const FALLBACK_VOICES: { voice_id: string; name: string }[] = [
-  { voice_id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel" },
-  { voice_id: "AZnzlk1XvdvUeBnXmlld", name: "Domi" },
-  { voice_id: "EXAVITQu4vr4xnSDxMaL", name: "Bella" },
-  { voice_id: "ErXwobaYiN019PkySvjV", name: "Antoni" },
-  { voice_id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh" },
-  { voice_id: "VR6AewLTigWG4xSOukaG", name: "Arnold" },
-  { voice_id: "pNInz6obpgDQGcFmaJgB", name: "Adam" },
-  { voice_id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam" },
-  { voice_id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli" },
+  { voice_id: "JBFqnCBsd6RMkjVDRZzb", name: "George" },
+  { voice_id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah" },
+  { voice_id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura" },
+  { voice_id: "IKne3meq5aSn9XLyUdCD", name: "Charlie" },
+  { voice_id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum" },
+  { voice_id: "XB0fDUnXU5powFXDhCwa", name: "Charlotte" },
+  { voice_id: "cgSgspJ2msm6clMCkdW9", name: "Jessica" },
+  { voice_id: "cjVigY5qzO86Huf0OWal", name: "Eric" },
+  { voice_id: "nPczCjzI2devNBz1zQrb", name: "Brian" },
+  { voice_id: "pqHfZKP75CvOlQylNhV4", name: "Bill" },
 ];
 
 // Cache the account's actual voice library so we only pick IDs that exist there.
 let voicesCache: { at: number; voices: { voice_id: string; name: string }[] } | null = null;
-async function accountVoices(key: string): Promise<{ voices: { voice_id: string; name: string }[]; error?: string }> {
+async function accountVoices(client: ElevenLabsClient): Promise<{ voices: { voice_id: string; name: string }[]; error?: string }> {
   if (voicesCache && Date.now() - voicesCache.at < 600_000) return { voices: voicesCache.voices };
   try {
-    const r = await fetch("https://api.elevenlabs.io/v1/voices", {
-      headers: { "xi-api-key": key, "Accept": "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!r.ok) {
-      const detail = (await r.text().catch(() => "")).slice(0, 200);
-      return { voices: FALLBACK_VOICES, error: `voices list ${r.status}: ${detail}` };
-    }
-    const d = await r.json() as any;
-    const voices = Array.isArray(d?.voices)
-      ? d.voices.map((v: any) => ({ voice_id: String(v.voice_id), name: String(v.name ?? v.voice_id) })).filter((v: any) => v.voice_id)
+    const res: any = await client.voices.getAll();
+    const list = Array.isArray(res?.voices)
+      ? res.voices
+          .map((v: any) => ({ voice_id: String(v.voiceId ?? v.voice_id ?? ""), name: String(v.name ?? "") }))
+          .filter((v: any) => v.voice_id)
       : [];
-    if (voices.length === 0) return { voices: FALLBACK_VOICES };
-    voicesCache = { at: Date.now(), voices };
-    return { voices };
-  } catch {
-    return { voices: FALLBACK_VOICES, error: "voices list unreachable" };
+    if (list.length === 0) return { voices: FALLBACK_VOICES };
+    voicesCache = { at: Date.now(), voices: list };
+    return { voices: list };
+  } catch (e: any) {
+    return { voices: FALLBACK_VOICES, error: String(e?.message ?? e).slice(0, 200) };
   }
 }
 function pickVoice(voices: { voice_id: string; name: string }[], seed: string) {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return voices[h % voices.length];
+}
+
+async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
+  const reader = stream.getReader();
+  const chunks: Buffer[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
 }
 
 async function requireUser(req: any, res: any) {
@@ -355,45 +363,33 @@ router.post("/dispatch/tts", async (req, res): Promise<void> => {
   if (!text) { res.status(400).json({ error: "No text to speak." }); return; }
 
   const seed = String(req.body?.seed || user.username || "pilot");
-  const { voices, error: voicesErr } = await accountVoices(key);
+  const client = new ElevenLabsClient({ apiKey: key });
+  const { voices, error: voicesErr } = await accountVoices(client);
   const chosen = pickVoice(voices, seed);
 
-  const callTTS = (model: string) => fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${chosen.voice_id}?output_format=mp3_44100_128`,
-    {
-      method: "POST",
-      headers: { "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg" },
-      body: JSON.stringify({
-        text,
-        model_id: model,
-        voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    },
-  );
-
   try {
-    let r = await callTTS("eleven_turbo_v2_5");
-    if (!r.ok && (r.status === 400 || r.status === 422)) {
-      r = await callTTS("eleven_multilingual_v2"); // model not enabled on plan → try the standard one
-    }
-    if (!r.ok) {
-      const detail = (await r.text().catch(() => "")).slice(0, 300);
-      req.log?.warn?.({ status: r.status, detail, voicesErr }, "ElevenLabs TTS error");
-      res.status(502).json({
-        error: r.status === 401 ? "ElevenLabs rejected the API key (check it has text-to-speech permission)." : `Voice error (${r.status}).`,
-        detail: detail || voicesErr,
-      });
-      return;
-    }
-    const buf = Buffer.from(await r.arrayBuffer());
+    const stream = await client.textToSpeech.convert(chosen.voice_id, {
+      text,
+      modelId: "eleven_multilingual_v2",
+      outputFormat: "mp3_44100_128",
+      voiceSettings: { stability: 0.45, similarityBoost: 0.8, style: 0.3, useSpeakerBoost: true },
+    });
+    const buf = await streamToBuffer(stream as unknown as ReadableStream<Uint8Array>);
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Voice-Name", encodeURIComponent(chosen.name));
     res.send(buf);
-  } catch (e) {
-    req.log?.warn?.({ err: e }, "ElevenLabs request failed");
-    res.status(502).json({ error: "Voice service unreachable." });
+  } catch (e: any) {
+    const status = e?.statusCode ?? e?.status;
+    const body = e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : "";
+    const detail = (body || String(e?.message ?? e)).slice(0, 300);
+    req.log?.warn?.({ status, detail, voicesErr }, "ElevenLabs TTS error");
+    res.status(502).json({
+      error: status === 401
+        ? "ElevenLabs rejected the API key (check it has Text to Speech permission)."
+        : `Voice error${status ? ` (${status})` : ""}.`,
+      detail: detail || voicesErr,
+    });
   }
 });
 
