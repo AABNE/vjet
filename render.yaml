@@ -43,6 +43,13 @@ services:
         sync: false
       - key: ROLE_PILOT_ID
         sync: false
+      # New applications post here so any mod can Accept/Decline (falls back to
+      # DMing DISCORD_USER_ID if unset). DISCORD_MOD_ROLE_ID (optional) pings that
+      # role and restricts who may decide.
+      - key: DISCORD_APPLICATIONS_CHANNEL_ID
+        sync: false
+      - key: DISCORD_MOD_ROLE_ID
+        sync: false
 
   # Keep-alive: pings the health endpoint every 14 minutes so the free-tier web
   # service doesn't spin down. Update the URL if your service URL isn't vjet.onrender.com.

@@ -178,7 +178,8 @@ router.get("/discord-user", async (req: Request, res: Response): Promise<void> =
 router.post("/apply", async (req: Request, res: Response): Promise<void> => {
   const token = process.env["DISCORD_BOT_TOKEN"];
   const recruiterId = process.env["DISCORD_USER_ID"];
-  if (!token || !recruiterId) {
+  const modChannelId = process.env["DISCORD_APPLICATIONS_CHANNEL_ID"];
+  if (!token || (!recruiterId && !modChannelId)) {
     res.status(503).json({ error: "Application delivery is not configured." });
     return;
   }
@@ -236,37 +237,53 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
     ].join("\n");
 
     const headers = botHeaders(token);
+    const modRole = process.env["DISCORD_MOD_ROLE_ID"];
+    const components = [{
+      type: 1,
+      components: [
+        { type: 2, style: 3, label: "Accept application", custom_id: `vjetstar:accept:${discordId}` },
+        { type: 2, style: 4, label: "Decline application", custom_id: `vjetstar:decline:${discordId}` },
+      ],
+    }];
 
-    const dmResponse = await fetch(`${DISCORD_API}/users/@me/channels`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ recipient_id: String(recruiterId) }),
-    });
-    if (!dmResponse.ok) {
-      res.status(502).json({
-        error: "Could not open your Discord DM. Check the bot token, your user ID, and whether the bot can contact you.",
+    let delivered = false;
+
+    // Preferred: post into the mods channel so any mod can accept/decline.
+    if (modChannelId) {
+      const content = (modRole ? `<@&${modRole}> ` : "") + message;
+      const sent = await fetch(`${DISCORD_API}/channels/${modChannelId}/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          content,
+          components,
+          allowed_mentions: { parse: [], roles: modRole ? [modRole] : [] },
+        }),
       });
-      return;
+      if (sent.ok) delivered = true;
+      else logger.warn({ status: sent.status, detail: await sent.text().catch(() => "") }, "apply: mods-channel post failed");
     }
 
-    const dm = (await dmResponse.json()) as { id: string };
-    const sent = await fetch(`${DISCORD_API}/channels/${dm.id}/messages`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        content: message,
-        components: [{
-          type: 1,
-          components: [
-            { type: 2, style: 3, label: "Accept application", custom_id: `vjetstar:accept:${discordId}` },
-            { type: 2, style: 4, label: "Decline application", custom_id: `vjetstar:decline:${discordId}` },
-          ],
-        }],
-        allowed_mentions: { parse: [] },
-      }),
-    });
-    if (!sent.ok) {
-      res.status(502).json({ error: "Discord could not deliver the application." });
+    // Fallback (or if no channel configured): DM the recruiter.
+    if (!delivered && recruiterId) {
+      const dmResponse = await fetch(`${DISCORD_API}/users/@me/channels`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ recipient_id: String(recruiterId) }),
+      });
+      if (dmResponse.ok) {
+        const dm = (await dmResponse.json()) as { id: string };
+        const sent = await fetch(`${DISCORD_API}/channels/${dm.id}/messages`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ content: message, components, allowed_mentions: { parse: [] } }),
+        });
+        if (sent.ok) delivered = true;
+      }
+    }
+
+    if (!delivered) {
+      res.status(502).json({ error: "Discord could not deliver the application. Check the bot's access to the applications channel." });
       return;
     }
 
@@ -347,7 +364,7 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
   const token = process.env["DISCORD_BOT_TOKEN"];
   const recruiterId = process.env["DISCORD_USER_ID"];
   const publicKey = process.env["DISCORD_PUBLIC_KEY"];
-  if (!token || !recruiterId || !publicKey) {
+  if (!token || !publicKey) {
     res.status(503).json({ error: "Discord interactions are not configured." });
     return;
   }
@@ -496,9 +513,16 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
     return;
   }
 
+  // Any mod can decide. The application is posted in a mods-only channel, so
+  // channel visibility already gates who can click; if DISCORD_MOD_ROLE_ID is
+  // set we additionally require that role. The recruiter can always decide.
   const actorId = String(interaction.member?.user?.id || interaction.user?.id || "");
-  if (actorId !== String(recruiterId)) {
-    res.json({ type: 4, data: { content: "Only the vJetstar recruitment administrator can decide applications.", flags: 64 } });
+  const modRole = process.env["DISCORD_MOD_ROLE_ID"];
+  const actorRoles: string[] = Array.isArray(interaction.member?.roles) ? interaction.member.roles : [];
+  const isRecruiter = recruiterId ? actorId === String(recruiterId) : false;
+  const isMod = modRole ? actorRoles.includes(modRole) : true;
+  if (!isRecruiter && !isMod) {
+    res.json({ type: 4, data: { content: "You need to be a vJetstar moderator to decide applications.", flags: 64 } });
     return;
   }
 
