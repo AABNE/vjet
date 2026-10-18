@@ -348,6 +348,43 @@ router.get("/dispatch/voice-status", async (req, res): Promise<void> => {
   res.json({ configured: !!process.env.ELEVENLABS_API_KEY });
 });
 
+// GET /api/dispatch/voice-debug — TEMP diagnostic (no secrets): reports whether
+// the key is set, whether voices list, and whether a tiny TTS works, with the
+// real ElevenLabs error if not.
+router.get("/dispatch/voice-debug", async (_req, res): Promise<void> => {
+  const key = process.env.ELEVENLABS_API_KEY;
+  const out: any = { keyPresent: !!key, keyLength: key ? key.length : 0 };
+  if (!key) { res.json(out); return; }
+  const client = new ElevenLabsClient({ apiKey: key });
+  try {
+    const r: any = await client.voices.getAll();
+    const list = Array.isArray(r?.voices) ? r.voices : [];
+    out.voicesOk = true;
+    out.voiceCount = list.length;
+    out.sample = list.slice(0, 5).map((v: any) => ({ id: v.voiceId ?? v.voice_id, name: v.name }));
+  } catch (e: any) {
+    out.voicesOk = false;
+    out.voicesError = { status: e?.statusCode ?? e?.status, body: e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : String(e?.message ?? e) };
+  }
+  const voiceId = out.sample?.[0]?.id || FALLBACK_VOICES[0].voice_id;
+  try {
+    const stream = await client.textToSpeech.convert(voiceId, {
+      text: "Radio check.",
+      modelId: "eleven_multilingual_v2",
+      outputFormat: "mp3_44100_128",
+    });
+    const buf = await streamToBuffer(stream as unknown as ReadableStream<Uint8Array>);
+    out.ttsOk = true;
+    out.ttsBytes = buf.length;
+    out.ttsVoiceId = voiceId;
+  } catch (e: any) {
+    out.ttsOk = false;
+    out.ttsVoiceId = voiceId;
+    out.ttsError = { status: e?.statusCode ?? e?.status, body: e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : String(e?.message ?? e) };
+  }
+  res.json(out);
+});
+
 // POST /api/dispatch/tts — proxy to the real ElevenLabs API and stream back MP3,
 // so dispatch speaks with a natural voice and the API key stays server-side.
 router.post("/dispatch/tts", async (req, res): Promise<void> => {
