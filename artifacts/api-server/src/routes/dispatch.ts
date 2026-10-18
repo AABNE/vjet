@@ -8,10 +8,12 @@ const router: IRouter = Router();
 
 const OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free";
 
-// Current ElevenLabs default-library voices (used if we can't read the account's
-// own list). These are the modern IDs every account has — not the legacy ones.
+// ElevenLabs DEFAULT voices — available to every account, including the free
+// plan. We deliberately do NOT use shared-library voices: those return
+// 402 paid_plan_required on free accounts. Each is distinct so pilots differ.
 const FALLBACK_VOICES: { voice_id: string; name: string }[] = [
   { voice_id: "JBFqnCBsd6RMkjVDRZzb", name: "George" },
+  { voice_id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger" },
   { voice_id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah" },
   { voice_id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura" },
   { voice_id: "IKne3meq5aSn9XLyUdCD", name: "Charlie" },
@@ -23,24 +25,6 @@ const FALLBACK_VOICES: { voice_id: string; name: string }[] = [
   { voice_id: "pqHfZKP75CvOlQylNhV4", name: "Bill" },
 ];
 
-// Cache the account's actual voice library so we only pick IDs that exist there.
-let voicesCache: { at: number; voices: { voice_id: string; name: string }[] } | null = null;
-async function accountVoices(client: ElevenLabsClient): Promise<{ voices: { voice_id: string; name: string }[]; error?: string }> {
-  if (voicesCache && Date.now() - voicesCache.at < 600_000) return { voices: voicesCache.voices };
-  try {
-    const res: any = await client.voices.getAll();
-    const list = Array.isArray(res?.voices)
-      ? res.voices
-          .map((v: any) => ({ voice_id: String(v.voiceId ?? v.voice_id ?? ""), name: String(v.name ?? "") }))
-          .filter((v: any) => v.voice_id)
-      : [];
-    if (list.length === 0) return { voices: FALLBACK_VOICES };
-    voicesCache = { at: Date.now(), voices: list };
-    return { voices: list };
-  } catch (e: any) {
-    return { voices: FALLBACK_VOICES, error: String(e?.message ?? e).slice(0, 200) };
-  }
-}
 function pickVoice(voices: { voice_id: string; name: string }[], seed: string) {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
@@ -348,49 +332,6 @@ router.get("/dispatch/voice-status", async (req, res): Promise<void> => {
   res.json({ configured: !!process.env.ELEVENLABS_API_KEY });
 });
 
-// GET /api/dispatch/voice-debug — TEMP diagnostic (no secrets): reports whether
-// the key is set, whether voices list, and whether a tiny TTS works, with the
-// real ElevenLabs error if not.
-router.get("/dispatch/voice-debug", async (req, res): Promise<void> => {
-  const key = process.env.ELEVENLABS_API_KEY;
-  const out: any = { keyPresent: !!key, keyLength: key ? key.length : 0 };
-  if (!key) { res.json(out); return; }
-  const client = new ElevenLabsClient({ apiKey: key });
-
-  const send = req.query.send === "1";       // actually stream the MP3 back
-  const vs = req.query.vs === "1";           // include voiceSettings
-  const seed = String(req.query.seed ?? ""); // use the per-pilot picked voice
-
-  let voiceId = FALLBACK_VOICES[0].voice_id;
-  try {
-    const { voices } = await accountVoices(client);
-    voiceId = seed ? pickVoice(voices, seed).voice_id : voices[0].voice_id;
-    out.voiceCount = voices.length;
-  } catch (e: any) {
-    out.voicesError = String(e?.message ?? e);
-  }
-  out.voiceId = voiceId;
-
-  try {
-    const opts: any = { text: "Radio check, reading you five by five.", modelId: "eleven_multilingual_v2", outputFormat: "mp3_44100_128" };
-    if (vs) opts.voiceSettings = { stability: 0.45, similarityBoost: 0.8, style: 0.3, useSpeakerBoost: true };
-    const stream = await client.textToSpeech.convert(voiceId, opts);
-    const buf = await streamToBuffer(stream as unknown as ReadableStream<Uint8Array>);
-    if (send) {
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("Cache-Control", "no-store");
-      res.send(buf);
-      return;
-    }
-    out.ttsOk = true;
-    out.ttsBytes = buf.length;
-  } catch (e: any) {
-    out.ttsOk = false;
-    out.ttsError = { status: e?.statusCode ?? e?.status, body: e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : String(e?.message ?? e) };
-  }
-  res.json(out);
-});
-
 // POST /api/dispatch/tts — proxy to the real ElevenLabs API and stream back MP3,
 // so dispatch speaks with a natural voice and the API key stays server-side.
 router.post("/dispatch/tts", async (req, res): Promise<void> => {
@@ -407,16 +348,19 @@ router.post("/dispatch/tts", async (req, res): Promise<void> => {
 
   const seed = String(req.body?.seed || user.username || "pilot");
   const client = new ElevenLabsClient({ apiKey: key });
-  const { voices, error: voicesErr } = await accountVoices(client);
-  const chosen = pickVoice(voices, seed);
+  const chosen = pickVoice(FALLBACK_VOICES, seed);
 
   try {
-    const stream = await client.textToSpeech.convert(chosen.voice_id, {
-      text,
-      modelId: "eleven_multilingual_v2",
-      outputFormat: "mp3_44100_128",
-      voiceSettings: { stability: 0.45, similarityBoost: 0.8, style: 0.3, useSpeakerBoost: true },
-    });
+    const stream = await client.textToSpeech.convert(
+      chosen.voice_id,
+      {
+        text,
+        modelId: "eleven_multilingual_v2",
+        outputFormat: "mp3_44100_128",
+        voiceSettings: { stability: 0.45, similarityBoost: 0.8, style: 0.3, useSpeakerBoost: true },
+      },
+      { maxRetries: 0, timeoutInSeconds: 25 }, // don't stall on errors (free-plan 402 etc.)
+    );
     const buf = await streamToBuffer(stream as unknown as ReadableStream<Uint8Array>);
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Cache-Control", "no-store");
@@ -426,12 +370,12 @@ router.post("/dispatch/tts", async (req, res): Promise<void> => {
     const status = e?.statusCode ?? e?.status;
     const body = e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : "";
     const detail = (body || String(e?.message ?? e)).slice(0, 300);
-    req.log?.warn?.({ status, detail, voicesErr }, "ElevenLabs TTS error");
+    req.log?.warn?.({ status, detail }, "ElevenLabs TTS error");
     res.status(502).json({
       error: status === 401
         ? "ElevenLabs rejected the API key (check it has Text to Speech permission)."
         : `Voice error${status ? ` (${status})` : ""}.`,
-      detail: detail || voicesErr,
+      detail,
     });
   }
 });
