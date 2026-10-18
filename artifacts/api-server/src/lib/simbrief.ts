@@ -92,20 +92,33 @@ export class SimbriefError extends Error {
 export async function fetchSimbriefBriefing(username: string): Promise<SimbriefBriefing> {
   const url = new URL("https://www.simbrief.com/api/xml.fetcher.php");
   url.searchParams.set("username", username);
-  url.searchParams.set("json", "v2");
+  url.searchParams.set("json", "1");
 
   let payload: JsonObject;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(url, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const raw = await response.text();
     if (!response.ok) {
       throw new SimbriefError(
         response.status === 400 ? 400 : 502,
         response.status === 400
-          ? "SimBrief has no current plan for that username."
+          ? `SimBrief has no current plan for "${username}". Generate a flight on SimBrief first, or check the username in Pilot Settings.`
           : "SimBrief is temporarily unavailable. Try again shortly.",
       );
     }
-    payload = object(await response.json());
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith("<")) {
+      // Empty, or XML/HTML error page — usually an unknown username.
+      throw new SimbriefError(400, `SimBrief didn't return a plan for "${username}". Check your SimBrief username in Pilot Settings and generate a flight there first.`);
+    }
+    try {
+      payload = object(JSON.parse(trimmed));
+    } catch {
+      throw new SimbriefError(502, "SimBrief returned an unexpected response. Try again shortly.");
+    }
   } catch (e) {
     if (e instanceof SimbriefError) throw e;
     throw new SimbriefError(502, "Could not reach SimBrief. Try again shortly.");

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/components/auth-provider";
 import { apiGet, apiPost } from "@/lib/api";
+import { dispatchChat, speak, stopSpeaking, hasPuter, randomVoice } from "@/lib/puter";
 import {
   Radio, Send, Phone, PhoneOff, Mic, DownloadCloud, CheckCircle2, ShieldAlert,
-  Plane, MapPin, Fuel, Cloud, Route as RouteIcon, Loader2,
+  Plane, MapPin, Fuel, Cloud, Route as RouteIcon, Loader2, Volume2,
 } from "lucide-react";
-
-const ORANGE = "#fb5713";
 
 interface Briefing {
   flightNumber?: string; route?: string; initialAltitude?: string; routeDistanceNm?: number;
@@ -24,26 +24,57 @@ interface PilotRecord { periodKey: string; infractions: number; strikes: number;
 type Msg = { role: "user" | "assistant"; content: string };
 
 const GREETING =
-  "vJetstar Dispatch, go ahead. Import your SimBrief plan and I'll send your briefing, then hit Request dispatch and Request clearance before you push — or just ask me here.";
+  "vJetstar Dispatch, go ahead.";
 
-function pickVoice(): SpeechSynthesisVoice | null {
-  const synth = window.speechSynthesis;
-  if (!synth) return null;
-  const voices = synth.getVoices().filter((v) => v.lang.toLowerCase().startsWith("en"));
-  if (voices.length === 0) return null;
-  const score = (v: SpeechSynthesisVoice) => {
-    const n = v.name.toLowerCase();
-    if (n.includes("natural")) return 5;       // Windows 11 neural voices
-    if (n.includes("google")) return 4;        // Chrome's cloud voices
-    if (n.includes("aria") || n.includes("guy") || n.includes("libby")) return 3;
-    if (v.lang.toLowerCase() === "en-au") return 2;
-    return 1;
-  };
-  return voices.sort((a, b) => score(b) - score(a))[0] ?? null;
+function buildSystemPrompt(user: any, entry: DispatchEntry | null, dispatcher: string): string {
+  const L: string[] = [];
+  L.push(`You are ${dispatcher}, a real human flight dispatcher working the ops desk at vJetstar — a Jetstar Airways virtual airline for Microsoft Flight Simulator.`);
+  L.push("Talk EXACTLY like a real person on the radio/phone to a pilot — casual, warm, a bit informal. NOT a formal assistant, NOT a chatbot.");
+  L.push("Keep every reply SHORT, like real radio — usually one or two sentences. Use the pilot's callsign.");
+  L.push("Sound human: use natural fillers and pauses — 'uh', 'yeah', 'okay so', 'give me a sec…', 'standby', 'lemme check', and trailing '…' where you'd pause. Don't overdo it, but never sound scripted.");
+  L.push("You REMEMBER the whole conversation and refer back to it naturally.");
+  L.push("");
+  L.push("How it works (guide the pilot through this, don't dump it all at once):");
+  L.push("- They import their SimBrief plan → you've got their briefing.");
+  L.push("- They request dispatch → you approve them.");
+  L.push("- They request clearance → you clear them to push and start.");
+  L.push("- Pushing back before you've cleared them is logged as an infraction, so remind them to get cleared first.");
+  L.push("If they tell you they've diverted or can't make a flight, react like a real dispatcher: acknowledge it, tell them you'll sort their roster, and give them a new plan — e.g. assign a new routing and tell them to import SimBrief again and call you back.");
+  L.push("You are company ops, not ATC — don't invent ATC clearances, squawks or frequencies.");
+  L.push("");
+  L.push("Example of the tone to match:");
+  L.push(`Pilot: "hey dispatch, on the ground at YBBN requesting dispatch"`);
+  L.push(`You: "yeah gimme a sec… okay, JST653 you're approved, go ahead and grab clearance whenever you're ready."`);
+  L.push(`Pilot: "hey I've just had to divert to Cairns"`);
+  L.push(`You: "ah damn, okay — no worries, we'll get another pilot to cover your next shifts. I'll put you on Cairns–Brisbane then Brisbane–Sydney on VH-A5A… import SimBrief for that and call me back, yeah?"`);
+  L.push("");
+
+  const fleet = Array.isArray(user?.aircraft) ? user.aircraft.join(", ") : (user?.aircraft || "");
+  L.push(`Pilot on frequency: ${user?.username || "pilot"}. Fleet: ${fleet || "unknown"}. Sim: ${(user as any)?.simulatorVersion || "MSFS"}. Logged hours: ${typeof user?.simHours === "number" ? user.simHours.toFixed(1) : "?"}.`);
+
+  if (entry) {
+    const f = entry.flight;
+    L.push(`Current sector: ${f.flightNumber} ${f.departure}→${f.arrival}, ${f.aircraft}, scheduled ${f.departureTime} on ${f.flightDate}, ${f.durationMinutes} min.`);
+    L.push(`Flight status: ${entry.status}. Dispatch status: ${entry.dispatchStatus}.`);
+    const b = entry.briefing;
+    if (b) {
+      if (b.route) L.push(`Filed route: ${b.route}`);
+      if (b.initialAltitude) L.push(`Initial altitude: ${b.initialAltitude}`);
+      if (typeof b.fuelRamp === "number") L.push(`Ramp fuel: ${b.fuelRamp} ${b.fuelUnits ?? ""}`);
+      if (b.origMetar) L.push(`Departure weather: ${b.origMetar}`);
+      if (b.destMetar) L.push(`Arrival weather: ${b.destMetar}`);
+    } else {
+      L.push("No SimBrief briefing imported for this sector yet — nudge them to import it when it fits the conversation.");
+    }
+  } else {
+    L.push("The pilot has no active or upcoming sector right now. If they want to fly, tell them to pick one from Available Routes first.");
+  }
+  return L.join("\n");
 }
 
 export default function Dispatch() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const state = useQuery<DispatchState>({ queryKey: ["dispatch-state"], queryFn: () => apiGet("/api/dispatch/state"), refetchInterval: 15_000, retry: false });
   const record = useQuery<PilotRecord>({ queryKey: ["pilot-record"], queryFn: () => apiGet("/api/pilot/record"), refetchInterval: 30_000, retry: false });
 
@@ -56,35 +87,43 @@ export default function Dispatch() {
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState("");
+  const [speaking, setSpeaking] = useState(false);
 
   const scroller = useRef<HTMLDivElement | null>(null);
-  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const [listening, setListening] = useState(false);
   const [callNote, setCallNote] = useState("");
   const recog = useRef<any>(null);
+  const voice = useRef(randomVoice());
+  const storeKey = user?.username ? `vjet-dispatch-${user.username}` : null;
 
-  const speechOk = typeof window !== "undefined" && "speechSynthesis" in window;
   const recogOk = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
+  // Load the remembered conversation for this pilot.
   useEffect(() => {
-    if (!speechOk) return;
-    const set = () => { voiceRef.current = pickVoice(); };
-    set();
-    window.speechSynthesis.onvoiceschanged = set;
-    return () => { try { window.speechSynthesis.onvoiceschanged = null; window.speechSynthesis.cancel(); } catch { /* */ } };
-  }, [speechOk]);
+    if (!storeKey) return;
+    try {
+      const raw = localStorage.getItem(storeKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as Msg[];
+        if (Array.isArray(saved) && saved.length) setMessages(saved);
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeKey]);
+
+  // Persist the conversation (capped) so dispatch "remembers".
+  useEffect(() => {
+    if (!storeKey) return;
+    try { localStorage.setItem(storeKey, JSON.stringify(messages.slice(-60))); } catch { /* ignore */ }
+  }, [messages, storeKey]);
 
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [messages, sending]);
+  useEffect(() => () => stopSpeaking(), []);
 
-  function speak(text: string) {
-    if (!speechOk) return;
-    try {
-      const u = new SpeechSynthesisUtterance(text);
-      if (voiceRef.current) u.voice = voiceRef.current;
-      u.rate = 1.05; u.pitch = 1;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch { /* ignore */ }
+  async function say(reply: string) {
+    if (mode !== "call") return;
+    setSpeaking(true);
+    try { await speak(reply, voice.current.id); } finally { setSpeaking(false); }
   }
 
   async function send(text: string) {
@@ -95,12 +134,13 @@ export default function Dispatch() {
     setInput("");
     setSending(true);
     try {
-      const { reply } = await apiPost<{ reply: string }>("/api/dispatch/chat", { messages: next });
+      const system = buildSystemPrompt(user, entry, voice.current.name);
+      const payload = [{ role: "system" as const, content: system }, ...next.slice(-16)];
+      const reply = await dispatchChat(payload);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
-      if (mode === "call") speak(reply);
+      void say(reply);
     } catch (e: any) {
-      const msg = e?.message || "Dispatch is unreachable right now.";
-      setMessages((m) => [...m, { role: "assistant", content: `(${msg})` }]);
+      setMessages((m) => [...m, { role: "assistant", content: `(dispatch unreachable — ${e?.message || "try again"})` }]);
     } finally {
       setSending(false);
     }
@@ -134,12 +174,19 @@ export default function Dispatch() {
       await apiPost(`/api/dispatch/${entry.id}/${path}`);
       await Promise.all([state.refetch(), qc.invalidateQueries({ queryKey: ["notifications"] })]);
       setMessages((m) => [...m, { role: "assistant", content: okMsg }]);
-      if (mode === "call") speak(okMsg);
+      void say(okMsg);
     } catch (e: any) {
       setActionErr(e?.message || "That didn't go through.");
     } finally {
       setBusy(null);
     }
+  }
+
+  function clearChat() {
+    stopSpeaking();
+    voice.current = randomVoice();
+    setMessages([{ role: "assistant", content: GREETING }]);
+    if (storeKey) { try { localStorage.removeItem(storeKey); } catch { /* */ } }
   }
 
   const ds = entry?.dispatchStatus ?? "none";
@@ -152,7 +199,7 @@ export default function Dispatch() {
         <p className="font-mono text-[10px] font-semibold uppercase tracking-[.2em] text-[#fb5713]">Operations · ground</p>
         <h1 className="mt-2 text-5xl font-black uppercase leading-none tracking-tight text-[#1a1a1a] md:text-6xl">Dispatch</h1>
         <p className="mt-3 max-w-2xl text-sm text-[#6b7280]">
-          Your company ops desk. Import your SimBrief plan to get a briefing, then <b>request dispatch</b> and <b>request clearance</b> before you push back. Push before you're cleared and it's logged as an infraction. Talk to dispatch by text or call.
+          Your company ops desk. Import your SimBrief plan to get a briefing, then <b>request dispatch</b> and <b>request clearance</b> before you push back. Push before you're cleared and it's logged as an infraction. Call dispatch or message them — they remember your conversation.
         </p>
       </div>
 
@@ -165,15 +212,18 @@ export default function Dispatch() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         {/* Chat / call */}
-        <div className="flex flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white" style={{ height: 560 }}>
+        <div className="flex flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white" style={{ height: 580 }}>
           <div className="flex items-center justify-between border-b border-[#f3f4f6] bg-[#1a1a1a] px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" /></span>
-              <span className="font-mono text-[11px] font-bold uppercase tracking-widest">vJetstar Dispatch</span>
+              <span className="font-mono text-[11px] font-bold uppercase tracking-widest">Dispatch · {voice.current.name}</span>
             </div>
-            <div className="flex items-center gap-1 rounded-full bg-white/10 p-0.5">
-              <button onClick={() => setMode("text")} className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "text" ? "bg-white text-[#1a1a1a]" : "text-white/70"}`}>Text</button>
-              <button onClick={() => setMode("call")} className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "call" ? "bg-[#fb5713] text-white" : "text-white/70"}`}><Phone className="h-3 w-3" />Call</button>
+            <div className="flex items-center gap-2">
+              <button onClick={clearChat} title="New shift (clears memory)" className="font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80">New shift</button>
+              <div className="flex items-center gap-1 rounded-full bg-white/10 p-0.5">
+                <button onClick={() => { stopSpeaking(); setMode("text"); }} className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "text" ? "bg-white text-[#1a1a1a]" : "text-white/70"}`}>Text</button>
+                <button onClick={() => setMode("call")} className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "call" ? "bg-[#fb5713] text-white" : "text-white/70"}`}><Phone className="h-3 w-3" />Call</button>
+              </div>
             </div>
           </div>
 
@@ -181,12 +231,12 @@ export default function Dispatch() {
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${m.role === "user" ? "bg-[#1a1a1a] text-white" : "border border-[#e5e7eb] bg-white text-[#1a1a1a]"}`}>
-                  {m.role === "assistant" && <div className="mb-0.5 font-mono text-[9px] font-bold uppercase tracking-widest text-[#fb5713]">Dispatch</div>}
+                  {m.role === "assistant" && <div className="mb-0.5 flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-widest text-[#fb5713]">Dispatch{speaking && i === messages.length - 1 && <Volume2 className="h-3 w-3 animate-pulse" />}</div>}
                   {m.content}
                 </div>
               </div>
             ))}
-            {sending && <div className="flex justify-start"><div className="flex items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white px-3.5 py-2 text-sm text-[#9ca3af]"><Loader2 className="h-3.5 w-3.5 animate-spin" />Dispatch is responding…</div></div>}
+            {sending && <div className="flex justify-start"><div className="flex items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white px-3.5 py-2 text-sm text-[#9ca3af]"><Loader2 className="h-3.5 w-3.5 animate-spin" />Dispatch is on it…</div></div>}
           </div>
 
           {mode === "call" ? (
@@ -231,7 +281,6 @@ export default function Dispatch() {
                 <div className="mt-1 flex items-center gap-2 text-2xl font-black uppercase tracking-tight text-[#1a1a1a]">
                   {entry.flight.departure}<MapPin className="h-4 w-4 text-[#e5e7eb]" />{entry.flight.arrival}
                 </div>
-                {/* progress */}
                 <div className="mt-4 flex items-center gap-1">
                   {["Briefing", "Approved", "Cleared"].map((lab, i) => (
                     <div key={lab} className="flex-1">
@@ -250,15 +299,15 @@ export default function Dispatch() {
                 )}
                 {actionErr && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">{actionErr}</div>}
                 <div className="mt-4 space-y-2">
-                  <button onClick={() => act("import-briefing", "Briefing sent — check your flight plan on the right.")} disabled={!!busy}
+                  <button onClick={() => act("import-briefing", "Alright, got your SimBrief plan up — briefing's on your screen.")} disabled={!!busy}
                     className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#fb5713] bg-[#fff7ed] px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#fb5713] transition hover:bg-[#ffeadf] disabled:opacity-50">
                     {busy === "import-briefing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <DownloadCloud className="h-4 w-4" />}{hasBriefing ? "Re-import briefing" : "Import SimBrief briefing"}
                   </button>
-                  <button onClick={() => act("request", "Dispatch approved. Request clearance when you're ready to push.")} disabled={!!busy || ban?.banned || ds === "approved" || ds === "cleared"}
+                  <button onClick={() => act("request", "Yeah you're approved — grab clearance when you're ready to push.")} disabled={!!busy || ban?.banned || ds === "approved" || ds === "cleared"}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a1a1a] px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white transition disabled:opacity-40">
                     {busy === "request" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{ds === "approved" || ds === "cleared" ? "Dispatch approved" : "Request dispatch"}
                   </button>
-                  <button onClick={() => act("clearance", "Cleared to push and start. Safe flight.")} disabled={!!busy || (ds !== "approved" && ds !== "cleared") || ds === "cleared"}
+                  <button onClick={() => act("clearance", "Okay, you're cleared to push and start. Safe flight, yeah?")} disabled={!!busy || (ds !== "approved" && ds !== "cleared") || ds === "cleared"}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white transition disabled:opacity-40">
                     {busy === "clearance" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}{ds === "cleared" ? "Cleared" : "Request clearance"}
                   </button>
@@ -269,7 +318,6 @@ export default function Dispatch() {
             )}
           </div>
 
-          {/* Pilot record */}
           <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
             <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[.18em] text-[#9ca3af]"><ShieldAlert className="h-3.5 w-3.5 text-[#fb5713]" />Your record · this month</div>
             {record.data ? (
@@ -290,6 +338,10 @@ export default function Dispatch() {
               </>
             ) : <p className="mt-3 text-sm text-[#6b7280]">Clean record.</p>}
           </div>
+
+          {!hasPuter() && (
+            <p className="px-1 text-[10px] leading-relaxed text-[#9ca3af]">Voices use Puter (free). If it's blocked here, dispatch falls back to your browser voice. First call may ask you to sign in to Puter.</p>
+          )}
         </aside>
       </div>
     </div>
