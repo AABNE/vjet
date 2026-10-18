@@ -7,6 +7,8 @@ import adminRouter from "./admin";
 import simbriefRouter from "./simbrief";
 import trackerRouter from "./tracker";
 import recruitmentRouter from "./recruitment";
+import dispatchRouter from "./dispatch";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -18,5 +20,7 @@ router.use(timetableRouter);
 router.use(adminRouter);
 router.use(simbriefRouter);
 router.use(trackerRouter);
+router.use(dispatchRouter);
+router.use(notificationsRouter);
 
 export default router;

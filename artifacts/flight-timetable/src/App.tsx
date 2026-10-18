@@ -4,11 +4,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
-import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette } from "lucide-react";
+import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio } from "lucide-react";
 import { VJetstarLogo } from "@/components/VJetstarLogo";
 import { useEffect, useState } from "react";
 import { useIsDesktopApp } from "@/hooks/useSimLink";
 import { AutoFlightTimer } from "@/components/AutoFlightTimer";
+import { NotificationBell } from "@/components/NotificationBell";
 import Login from "@/pages/login";
 import Timetable from "@/pages/timetable";
 import Flights from "@/pages/flights";
@@ -18,6 +19,7 @@ import Settings from "@/pages/settings";
 import Liveries from "@/pages/liveries";
 import Software from "@/pages/software";
 import LiveMap from "@/pages/live-map";
+import Dispatch from "@/pages/dispatch";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -25,6 +27,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWind
 const navItems = [
   { href: "/timetable",  label: "My timetable",     icon: CalendarDays },
   { href: "/flights",    label: "Available routes",  icon: Plane },
+  { href: "/dispatch",   label: "Dispatch",          icon: Radio },
   { href: "/liveries",   label: "Liveries",          icon: Palette },
   { href: "/logs",       label: "Flight records",    icon: ClipboardList },
   { href: "/settings",   label: "Settings",          icon: Settings2 },
@@ -226,11 +229,13 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [path, setPath] = useLocation();
   const qc = useQueryClient();
   const isApp = useIsDesktopApp();
-  // In the app: show Live map (and hide Software — you're already in the app).
-  // On the website: show Software (download the app), no Live map.
+  // In the app: show Live map after Available routes (and hide Software — you're
+  // already in the app). On the website: show Software before Settings, no Live map.
+  const settingsItem = navItems[navItems.length - 1];
+  const beforeSettings = navItems.slice(0, navItems.length - 1);
   const displayedNav = isApp
     ? [navItems[0], navItems[1], ...appOnlyNavItems, ...navItems.slice(2)]
-    : [...navItems.slice(0, 4), ...webOnlyNavItems, navItems[4]];
+    : [...beforeSettings, ...webOnlyNavItems, settingsItem];
   const logout = useLogout({
     mutation: {
       onSuccess: () => {
@@ -286,6 +291,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="hidden items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-white/60 sm:flex">
             <span className="h-1.5 w-1.5 rounded-full bg-[#fb5713]" /> Ops ready
           </div>
+          <NotificationBell />
           <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 font-black uppercase text-white" data-testid="text-user-avatar">
             {user.username.slice(0, 1)}
           </div>
@@ -360,6 +366,7 @@ function Router() {
         <Route path="/liveries" component={Liveries} />
         <Route path="/software" component={Software} />
         <Route path="/live-map" component={LiveMap} />
+        <Route path="/dispatch" component={Dispatch} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>

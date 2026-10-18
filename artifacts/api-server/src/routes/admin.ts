@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, timetableTable, flightsTable, eq, ne } from "@workspace/db";
+import { addInfraction, notify } from "../lib/ops";
 
 import {
   CreateAdminUserBody,
@@ -321,6 +322,12 @@ router.post("/admin/flagged/:id/reject", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Flagged entry not found" });
     return;
   }
+
+  // Record an infraction against the pilot before removing the rejected flight.
+  const [flight] = await db.select().from(flightsTable).where(eq(flightsTable.id, entry.flightId));
+  const label = flight ? `${flight.flightNumber} (${flight.departure}→${flight.arrival})` : `flight #${entry.flightId}`;
+  await notify(entry.userId, "ops", "Flight rejected", `Your flagged flight ${label} was reviewed and rejected by an admin.`);
+  await addInfraction(entry.userId, "flight_rejected", `Flagged flight ${label} rejected by admin`);
 
   // Delete the entry entirely — no hours credited, gone from logs
   await db.delete(timetableTable).where(eq(timetableTable.id, id));

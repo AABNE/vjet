@@ -16,6 +16,11 @@ export const timetableTable = pgTable("timetable", {
   // flagging
   flagReason: text("flag_reason"),
   approvedByAdmin: boolean("approved_by_admin").notNull().default(false),
+  // dispatch flow: "none" | "requested" | "approved" | "cleared"
+  dispatchStatus: text("dispatch_status").notNull().default("none"),
+  briefing: text("briefing"), // JSON string of the imported SimBrief briefing
+  pushbackViolation: boolean("pushback_violation").notNull().default(false),
+  noShowNotified: boolean("no_show_notified").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

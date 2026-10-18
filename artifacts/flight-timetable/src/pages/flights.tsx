@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetAvailableFlightsQueryKey, getGetTimetableQueryKey, useGetAvailableFlights, useAddToTimetable } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
-import { MapPin, Plane, Plus, RotateCw, Search, X } from "lucide-react";
+import { DownloadCloud, MapPin, Plane, Plus, RotateCw, Search, X } from "lucide-react";
 
 function JetstarStar({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
@@ -182,6 +182,32 @@ function CustomFlightModal({ fleet, onClose, onCreated }: {
   const [flightNumber, setFlightNumber] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  const importSimbrief = async () => {
+    setError("");
+    setImporting(true);
+    try {
+      const res = await fetch("/api/simbrief/plan", { credentials: "include" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || "Could not import from SimBrief."); return; }
+      const b = d.briefing || {};
+      if (b.originIcao || b.originIata) setDeparture((b.originIcao || b.originIata).toUpperCase());
+      if (b.destIcao || b.destIata) setArrival((b.destIcao || b.destIata).toUpperCase());
+      if (b.aircraftFleet && fleet.includes(b.aircraftFleet)) setAircraft(b.aircraftFleet);
+      if (b.schedOutDate) setFlightDate(b.schedOutDate);
+      if (b.schedOutTimeZ) setDepartureTime(b.schedOutTimeZ);
+      if (b.eteMinutes) setDurationMinutes(Math.min(900, Math.max(10, Math.round(b.eteMinutes))));
+      if (b.flightNumber) setFlightNumber(String(b.flightNumber).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8));
+      if (b.aircraftFleet && !fleet.includes(b.aircraftFleet)) {
+        setError(`Imported, but the SimBrief aircraft (${b.aircraftRaw || b.aircraftFleet}) isn't in your fleet — pick one of yours.`);
+      }
+    } catch {
+      setError("Network error reaching SimBrief.");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,6 +253,12 @@ function CustomFlightModal({ fleet, onClose, onCreated }: {
         </div>
 
         <form onSubmit={submit} className="space-y-4 p-6">
+          <button type="button" onClick={importSimbrief} disabled={importing} data-testid="button-import-simbrief"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#fb5713] bg-[#fff7ed] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#fb5713] transition hover:bg-[#ffeadf] disabled:opacity-50">
+            <DownloadCloud className="h-4 w-4" />{importing ? "Importing…" : "Import from SimBrief"}
+          </button>
+          <p className="-mt-2 text-center text-[11px] text-[#9ca3af]">Pulls your latest SimBrief plan. You can tweak anything before adding.</p>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>From</label>

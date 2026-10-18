@@ -26,6 +26,8 @@ export async function initDb(): Promise<void> {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "simulator_version" TEXT NOT NULL DEFAULT 'MSFS2024';
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "has_seen_tutorial" TEXT NOT NULL DEFAULT 'false';
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "must_change_password" TEXT NOT NULL DEFAULT 'false';
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_seen_at" TIMESTAMPTZ;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "msfs_running" BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS "flights" (
         "id"               SERIAL PRIMARY KEY,
@@ -57,6 +59,10 @@ export async function initDb(): Promise<void> {
 
       ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "flag_reason" TEXT;
       ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "approved_by_admin" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "dispatch_status" TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "briefing" TEXT;
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "pushback_violation" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "no_show_notified" BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS "session" (
         "sid"    VARCHAR NOT NULL COLLATE "default",
@@ -77,6 +83,35 @@ export async function initDb(): Promise<void> {
         "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         "decided_at" TIMESTAMPTZ
       );
+
+      CREATE TABLE IF NOT EXISTS "notifications" (
+        "id"         SERIAL PRIMARY KEY,
+        "user_id"    INTEGER NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+        "kind"       TEXT NOT NULL DEFAULT 'info',
+        "title"      TEXT NOT NULL,
+        "body"       TEXT NOT NULL DEFAULT '',
+        "read_at"    TIMESTAMPTZ,
+        "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_notifications_user" ON "notifications" ("user_id");
+
+      CREATE TABLE IF NOT EXISTS "pilot_discipline" (
+        "user_id"      INTEGER PRIMARY KEY REFERENCES "users"("id") ON DELETE CASCADE,
+        "period_key"   TEXT NOT NULL DEFAULT '',
+        "infractions"  INTEGER NOT NULL DEFAULT 0,
+        "strikes"      INTEGER NOT NULL DEFAULT 0,
+        "ban_level"    INTEGER NOT NULL DEFAULT 0,
+        "banned_until" TIMESTAMPTZ
+      );
+
+      CREATE TABLE IF NOT EXISTS "pilot_infractions" (
+        "id"         SERIAL PRIMARY KEY,
+        "user_id"    INTEGER NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+        "type"       TEXT NOT NULL,
+        "reason"     TEXT NOT NULL DEFAULT '',
+        "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_infractions_user" ON "pilot_infractions" ("user_id");
     `);
 
     // Seed default admin if no users exist

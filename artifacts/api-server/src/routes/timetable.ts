@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
+import { getBan } from "../lib/ops";
 
 import {
   AddToTimetableBody,
@@ -228,6 +229,12 @@ router.post("/timetable/:id/start", async (req, res): Promise<void> => {
 
   if (entry.status !== "pending") {
     res.status(409).json({ error: "Flight has already been started" });
+    return;
+  }
+
+  const ban = await getBan(req.session.userId);
+  if (ban.banned) {
+    res.status(403).json({ error: `You're grounded until ${ban.until?.toUTCString()}. Flights are locked while suspended.`, bannedUntil: ban.until?.toISOString() });
     return;
   }
 

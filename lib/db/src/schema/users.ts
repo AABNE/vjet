@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, doublePrecision, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,6 +13,9 @@ export const usersTable = pgTable("users", {
   hasSeenTutorial: text("has_seen_tutorial").notNull().default("false"),
   mustChangePassword: text("must_change_password").notNull().default("false"),
   simHours: doublePrecision("sim_hours").notNull().default(0),
+  // Presence, updated by the Sim Link desktop heartbeat (used for no-show paging).
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  msfsRunning: boolean("msfs_running").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

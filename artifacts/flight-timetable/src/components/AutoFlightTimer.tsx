@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetTimetableQueryKey, useGetTimetable, useStartFlight, useFinishFlight } from "@workspace/api-client-react";
+import { getGetTimetableQueryKey, useGetTimetable, useFinishFlight } from "@workspace/api-client-react";
 import { useSimLink } from "@/hooks/useSimLink";
 import { useToast } from "@/hooks/use-toast";
+import { apiPost } from "@/lib/api";
 
 // Movement threshold (kt) — below this the aircraft counts as stopped. This is
 // far more reliable than the parking-brake SimVar, which many study-level
@@ -22,9 +23,12 @@ export function AutoFlightTimer() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const inv = () => qc.invalidateQueries({ queryKey: getGetTimetableQueryKey() });
+  const inv = () => {
+    qc.invalidateQueries({ queryKey: getGetTimetableQueryKey() });
+    qc.invalidateQueries({ queryKey: ["dispatch-state"] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  };
   const tt = useGetTimetable({ query: { queryKey: getGetTimetableQueryKey(), enabled: isApp } });
-  const start = useStartFlight({ mutation: { onSuccess: inv } });
   const finish = useFinishFlight({ mutation: { onSuccess: inv } });
 
   const airborne = useRef(false);
@@ -46,7 +50,9 @@ export function AutoFlightTimer() {
 
     if (busy.current) return;
 
-    // Aircraft starts moving on the ground → begin the next sector.
+    // Aircraft starts moving on the ground → begin the next sector. This goes
+    // through dispatch so pushing back before clearance is caught (and bans
+    // block the start).
     if (!active && pending.length && position.onGround && moving) {
       const next = [...pending].sort((a, b) =>
         `${a.flight.flightDate} ${a.flight.departureTime}`.localeCompare(`${b.flight.flightDate} ${b.flight.departureTime}`),
@@ -54,13 +60,20 @@ export function AutoFlightTimer() {
       busy.current = true;
       airborne.current = false;
       stoppedSince.current = null;
-      start.mutate({ id: next.id }, {
-        onSettled: () => { busy.current = false; },
-        onSuccess: () => toast({
-          title: "Flight started",
-          description: `${next.flight.flightNumber} ${next.flight.departure}→${next.flight.arrival} — rolling from the gate.`,
-        }),
-      });
+      apiPost<{ violation?: boolean }>(`/api/dispatch/${next.id}/pushback`)
+        .then((r) => {
+          inv();
+          toast(r?.violation
+            ? { title: "Pushed back without clearance", description: `${next.flight.flightNumber} started — this is logged as an infraction. Get clearance from Dispatch next time.` }
+            : { title: "Flight started", description: `${next.flight.flightNumber} ${next.flight.departure}→${next.flight.arrival} — rolling from the gate.` });
+        })
+        .catch((e: any) => {
+          toast({
+            title: e?.status === 403 ? "You're grounded" : "Couldn't start the flight",
+            description: e?.message || "Try again, or start it manually on your timetable.",
+          });
+        })
+        .finally(() => { busy.current = false; });
       return;
     }
 

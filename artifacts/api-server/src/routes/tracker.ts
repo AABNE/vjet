@@ -18,11 +18,14 @@ router.post("/tracker/heartbeat", async (req, res): Promise<void> => {
       uid = user?.id;
     }
 
-    if (uid && typeof totalHours === "number") {
-      // Update total sim hours in db
-      await db.update(usersTable)
-        .set({ simHours: totalHours })
-        .where(eq(usersTable.id, uid));
+    if (uid) {
+      // Update presence (for no-show paging) and, when provided, sim hours.
+      const patch: Record<string, unknown> = {
+        lastSeenAt: new Date(),
+        msfsRunning: !!msfsRunning,
+      };
+      if (typeof totalHours === "number") patch.simHours = totalHours;
+      await db.update(usersTable).set(patch).where(eq(usersTable.id, uid));
     }
 
     res.json({ ok: true });
