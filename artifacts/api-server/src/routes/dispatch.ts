@@ -351,35 +351,41 @@ router.get("/dispatch/voice-status", async (req, res): Promise<void> => {
 // GET /api/dispatch/voice-debug — TEMP diagnostic (no secrets): reports whether
 // the key is set, whether voices list, and whether a tiny TTS works, with the
 // real ElevenLabs error if not.
-router.get("/dispatch/voice-debug", async (_req, res): Promise<void> => {
+router.get("/dispatch/voice-debug", async (req, res): Promise<void> => {
   const key = process.env.ELEVENLABS_API_KEY;
   const out: any = { keyPresent: !!key, keyLength: key ? key.length : 0 };
   if (!key) { res.json(out); return; }
   const client = new ElevenLabsClient({ apiKey: key });
+
+  const send = req.query.send === "1";       // actually stream the MP3 back
+  const vs = req.query.vs === "1";           // include voiceSettings
+  const seed = String(req.query.seed ?? ""); // use the per-pilot picked voice
+
+  let voiceId = FALLBACK_VOICES[0].voice_id;
   try {
-    const r: any = await client.voices.getAll();
-    const list = Array.isArray(r?.voices) ? r.voices : [];
-    out.voicesOk = true;
-    out.voiceCount = list.length;
-    out.sample = list.slice(0, 5).map((v: any) => ({ id: v.voiceId ?? v.voice_id, name: v.name }));
+    const { voices } = await accountVoices(client);
+    voiceId = seed ? pickVoice(voices, seed).voice_id : voices[0].voice_id;
+    out.voiceCount = voices.length;
   } catch (e: any) {
-    out.voicesOk = false;
-    out.voicesError = { status: e?.statusCode ?? e?.status, body: e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : String(e?.message ?? e) };
+    out.voicesError = String(e?.message ?? e);
   }
-  const voiceId = out.sample?.[0]?.id || FALLBACK_VOICES[0].voice_id;
+  out.voiceId = voiceId;
+
   try {
-    const stream = await client.textToSpeech.convert(voiceId, {
-      text: "Radio check.",
-      modelId: "eleven_multilingual_v2",
-      outputFormat: "mp3_44100_128",
-    });
+    const opts: any = { text: "Radio check, reading you five by five.", modelId: "eleven_multilingual_v2", outputFormat: "mp3_44100_128" };
+    if (vs) opts.voiceSettings = { stability: 0.45, similarityBoost: 0.8, style: 0.3, useSpeakerBoost: true };
+    const stream = await client.textToSpeech.convert(voiceId, opts);
     const buf = await streamToBuffer(stream as unknown as ReadableStream<Uint8Array>);
+    if (send) {
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(buf);
+      return;
+    }
     out.ttsOk = true;
     out.ttsBytes = buf.length;
-    out.ttsVoiceId = voiceId;
   } catch (e: any) {
     out.ttsOk = false;
-    out.ttsVoiceId = voiceId;
     out.ttsError = { status: e?.statusCode ?? e?.status, body: e?.body ? (typeof e.body === "string" ? e.body : JSON.stringify(e.body)) : String(e?.message ?? e) };
   }
   res.json(out);
