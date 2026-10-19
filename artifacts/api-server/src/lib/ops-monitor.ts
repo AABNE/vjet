@@ -47,7 +47,7 @@ async function flightMonitorTick(): Promise<void> {
     };
     const fallback = `Scanned ${tracks.length} sector(s): ${facts.confirmedDelays} confirmed, ${facts.possibleDelays} possible delays; ${created} report(s) raised.`;
     const summary = (created || facts.confirmedDelays)
-      ? await aiSummarize(`Flight monitor results: ${JSON.stringify(facts)}. One sentence.`, fallback)
+      ? await aiSummarize("flight-monitor", `Flight monitor results: ${JSON.stringify(facts)}. One sentence.`, fallback)
       : fallback;
     return { facts, summary, outcome: `${created} created, ${updated} updated, ${notified} notified` };
   });

@@ -6,3 +6,4 @@ export * from "./applications";
 export * from "./notifications";
 export * from "./discipline";
 export * from "./ops";
+export * from "./ai";

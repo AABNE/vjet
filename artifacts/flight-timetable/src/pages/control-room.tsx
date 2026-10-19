@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { useAuth } from "@/components/auth-provider";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   Bot, Activity, CheckCircle2, XCircle, Pause, Play, AlertTriangle, ShieldCheck,
-  Loader2, ChevronDown, ChevronRight, Radio,
+  Loader2, ChevronDown, ChevronRight, Radio, Cpu,
 } from "lucide-react";
 
 interface Agent {
@@ -77,11 +78,14 @@ export default function ControlRoom() {
           <h1 className="mt-2 text-5xl font-black uppercase leading-none tracking-tight text-[#1a1a1a] md:text-6xl">AI Control Room</h1>
           <p className="mt-3 max-w-2xl text-sm text-[#6b7280]">Live view of every ops agent — what they're doing, why, and what's waiting on you.</p>
         </div>
-        <button onClick={() => act(globalPaused ? "/api/ops/agents/global/resume" : "/api/ops/agents/global/pause", "global")} disabled={busy === "global"}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition ${globalPaused ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
-          {busy === "global" ? <Loader2 className="h-4 w-4 animate-spin" /> : globalPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-          {globalPaused ? "Resume all agents" : "Emergency pause"}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href="/ai-models" className="flex items-center gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#1a1a1a] transition hover:bg-[#f3f4f6]"><Cpu className="h-4 w-4 text-[#fb5713]" />AI models</Link>
+          <button onClick={() => act(globalPaused ? "/api/ops/agents/global/resume" : "/api/ops/agents/global/pause", "global")} disabled={busy === "global"}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition ${globalPaused ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
+            {busy === "global" ? <Loader2 className="h-4 w-4 animate-spin" /> : globalPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+            {globalPaused ? "Resume all agents" : "Emergency pause"}
+          </button>
+        </div>
       </div>
 
       {globalPaused && (

@@ -18,18 +18,6 @@ function showNotice(message, type) {
   notice.className = `notice show ${type}`;
 }
 
-// Show the Volanta username field only when Xbox — Volanta is selected.
-const volantaField = document.querySelector("#volanta-field");
-const volantaInput = document.querySelector("#volanta-username");
-function syncTracking() {
-  const method = (document.querySelector('input[name="trackingMethod"]:checked') || {}).value || "simlink";
-  const isVolanta = method === "volanta";
-  if (volantaField) volantaField.hidden = !isVolanta;
-  if (volantaInput) volantaInput.required = isVolanta;
-}
-document.querySelectorAll('input[name="trackingMethod"]').forEach((el) => el.addEventListener("change", syncTracking));
-syncTracking();
-
 noVatsim.addEventListener("change", () => {
   cid.disabled = noVatsim.checked;
   cid.required = !noVatsim.checked;
@@ -101,13 +89,6 @@ form.addEventListener("submit", async event => {
     return;
   }
 
-  const trackingMethod = String(data.get("trackingMethod") || "simlink");
-  const volantaUsername = String(data.get("volantaUsername") || "").trim();
-  if (trackingMethod === "volanta" && !/^[A-Za-z0-9 _.\-]{2,40}$/.test(volantaUsername)) {
-    showNotice("Enter your Volanta username for Xbox tracking.", "err");
-    return;
-  }
-
   submit.disabled = true;
   submit.querySelector("span").textContent = "Submitting…";
 
@@ -122,8 +103,6 @@ form.addEventListener("submit", async event => {
         noVatsim: noVatsim.checked,
         aircraft,
         email: String(data.get("email") || "").trim(),
-        trackingMethod,
-        volantaUsername,
         website: String(data.get("website") || "")
       })
     });

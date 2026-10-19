@@ -72,8 +72,9 @@ export async function collectTracking(now = new Date()): Promise<TrackedFlight[]
     const f = fById.get(e.flightId);
     if (!u || !f) continue;
 
-    const provider: "simlink" | "volanta" = u.trackingMethod === "volanta" ? "volanta" : "simlink";
-    const providerSupported = provider === "simlink"; // Volanta live data not yet available
+    // PC / SimLink is the only supported tracking provider.
+    const provider: "simlink" | "volanta" = "simlink";
+    const providerSupported = true;
 
     const depAt = schedDep(f);
     const arrAt = depAt ? new Date(depAt.getTime() + f.durationMinutes * 60_000) : null;

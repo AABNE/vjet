@@ -249,6 +249,32 @@ export async function initDb(): Promise<void> {
         "auto_approve" TEXT NOT NULL DEFAULT '[]',
         "updated_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS "ai_config" (
+        "agent_key"         TEXT PRIMARY KEY,
+        "provider"          TEXT NOT NULL DEFAULT 'openrouter',
+        "model_id"          TEXT NOT NULL,
+        "enabled"           BOOLEAN NOT NULL DEFAULT TRUE,
+        "temperature"       DOUBLE PRECISION NOT NULL DEFAULT 0.4,
+        "max_tokens"        INTEGER NOT NULL DEFAULT 500,
+        "timeout_ms"        INTEGER NOT NULL DEFAULT 20000,
+        "max_retries"       INTEGER NOT NULL DEFAULT 1,
+        "fallback_model_id" TEXT,
+        "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS "ai_usage" (
+        "id"                SERIAL PRIMARY KEY,
+        "agent_key"         TEXT NOT NULL,
+        "model"             TEXT NOT NULL,
+        "ok"                BOOLEAN NOT NULL DEFAULT TRUE,
+        "latency_ms"        INTEGER,
+        "prompt_tokens"     INTEGER,
+        "completion_tokens" INTEGER,
+        "error_code"        TEXT,
+        "created_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_aiusage_agent" ON "ai_usage" ("agent_key");
     `);
 
     // Seed a small virtual fleet (real Jetstar registrations) if empty.

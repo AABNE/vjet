@@ -24,6 +24,7 @@ import Paperwork from "@/pages/paperwork";
 import OpsDashboard from "@/pages/ops-dashboard";
 import ControlRoom from "@/pages/control-room";
 import MaintenanceOps from "@/pages/maintenance-ops";
+import AiModels from "@/pages/ai-models";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -383,6 +384,7 @@ function Router() {
         <Route path="/ops" component={OpsDashboard} />
         <Route path="/control-room" component={ControlRoom} />
         <Route path="/maintenance-ops" component={MaintenanceOps} />
+        <Route path="/ai-models" component={AiModels} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>

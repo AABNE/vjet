@@ -153,28 +153,13 @@ export async function recentRuns(agentKey: string, limit = 1) {
     .limit(limit);
 }
 
-// ── AI decision summary (reuses the OpenRouter key; degrades to templated) ──
-export async function aiSummarize(prompt: string, fallback: string): Promise<string> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) return fallback;
-  try {
-    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemma-4-26b-a4b-it:free",
-        messages: [
-          { role: "system", content: "You are an airline operations controller. Write ONE concise sentence (max 30 words) summarising the decision and why. No preamble." },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 80, temperature: 0.3,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!r.ok) return fallback;
-    const d = await r.json() as any;
-    return (d?.choices?.[0]?.message?.content?.trim?.() || fallback).slice(0, 300);
-  } catch {
-    return fallback;
-  }
+// ── AI decision summary — uses each agent's configured model; degrades to a
+// templated fallback when AI is unavailable/disabled. ──
+export async function aiSummarize(agentKey: string, prompt: string, fallback: string): Promise<string> {
+  const { aiComplete } = await import("./ai");
+  const res = await aiComplete(agentKey, [
+    { role: "system", content: "You are an airline operations controller. Write ONE concise sentence (max 30 words) summarising the decision and why. No preamble." },
+    { role: "user", content: prompt },
+  ]);
+  return res.ok && res.text ? res.text.slice(0, 300) : fallback;
 }

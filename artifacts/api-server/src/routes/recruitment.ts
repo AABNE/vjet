@@ -196,8 +196,6 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
   const discordId = String(body.discordId || "").trim();
   const email = String(body.email || "").trim();
   const cid = body.noVatsim ? "Does not have a VATSIM CID yet" : String(body.cid || "").trim();
-  const trackingMethod = body.trackingMethod === "volanta" ? "volanta" : "simlink";
-  const volantaUsername = String(body.volantaUsername || "").trim();
 
   const aircraft = Array.isArray(body.aircraft)
     ? [...new Set(body.aircraft.map(String).filter((x: string) => ALLOWED_AIRCRAFT.includes(x)))]
@@ -211,10 +209,6 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
     !aircraft.length
   ) {
     res.status(400).json({ error: "Check your details and select at least one aircraft." });
-    return;
-  }
-  if (trackingMethod === "volanta" && !/^[A-Za-z0-9 _.\-]{2,40}$/.test(volantaUsername)) {
-    res.status(400).json({ error: "Enter your Volanta username for Xbox tracking." });
     return;
   }
 
@@ -238,7 +232,6 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
       `**VATSIM CID:** ${escapeDiscord(cid)}`,
       `**Preferred aircraft:** ${aircraft.map(escapeDiscord).join(", ")}`,
       `**Email:** ${escapeDiscord(email)}`,
-      `**Tracking:** ${trackingMethod === "volanta" ? `Xbox — Volanta (@${escapeDiscord(volantaUsername)})` : "PC — SimLink"}`,
       "",
       "_No password was requested or stored._",
     ].join("\n");
@@ -307,8 +300,6 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
           aircraft: aircraftCsv,
           email,
           cid: storedCid,
-          trackingMethod,
-          volantaUsername: trackingMethod === "volanta" ? volantaUsername : null,
           status: "pending",
         })
         .onConflictDoUpdate({
@@ -318,8 +309,6 @@ router.post("/apply", async (req: Request, res: Response): Promise<void> => {
             aircraft: aircraftCsv,
             email,
             cid: storedCid,
-            trackingMethod,
-            volantaUsername: trackingMethod === "volanta" ? volantaUsername : null,
             status: "pending",
             createdAt: new Date(),
             decidedAt: null,
@@ -616,8 +605,6 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
           isAdmin: "false",
           hasSeenTutorial: "false",
           mustChangePassword: "true",
-          trackingMethod: appRow.trackingMethod === "volanta" ? "volanta" : "simlink",
-          volantaUsername: appRow.trackingMethod === "volanta" ? appRow.volantaUsername : null,
         }).onConflictDoNothing({ target: usersTable.username }).returning();
 
         accountCreated = inserted.length > 0;

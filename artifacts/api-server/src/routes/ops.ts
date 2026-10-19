@@ -12,6 +12,7 @@ import {
 } from "../lib/ops-core";
 import { collectTracking } from "../lib/tracking";
 import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot } from "../lib/fleet";
+import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 
 const router: IRouter = Router();
 
@@ -116,6 +117,43 @@ router.get("/ops/agents", async (req, res): Promise<void> => {
     });
   }
   res.json({ globalPaused: !!global?.paused, agents: result });
+});
+
+// ── AI model configuration ──────────────────────────────────────────────────
+router.get("/ops/ai-config", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const models = await listModels();
+  const agents = [];
+  for (const a of AGENTS) {
+    const cfg = await getConfig(a.key);
+    const usage = await usageStats(a.key);
+    agents.push({ key: a.key, name: a.name, responsibility: a.responsibility,
+      provider: cfg.provider, modelId: cfg.modelId, enabled: cfg.enabled,
+      temperature: cfg.temperature, maxTokens: cfg.maxTokens, timeoutMs: cfg.timeoutMs,
+      maxRetries: cfg.maxRetries, fallbackModelId: cfg.fallbackModelId, usage });
+  }
+  res.json({ keyConfigured: !!process.env.OPENROUTER_API_KEY, models, agents });
+});
+
+router.post("/ops/ai-config/:key", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const key = String(req.params.key);
+  if (!AGENTS.some((a) => a.key === key)) { res.status(404).json({ error: "Unknown agent" }); return; }
+  const b = req.body ?? {};
+  const patch: any = {};
+  if (typeof b.modelId === "string" && b.modelId.trim()) patch.modelId = b.modelId.trim();
+  if (typeof b.fallbackModelId === "string") patch.fallbackModelId = b.fallbackModelId.trim() || null;
+  if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
+  if (Number.isFinite(Number(b.temperature))) patch.temperature = Math.max(0, Math.min(2, Number(b.temperature)));
+  if (Number.isFinite(Number(b.maxTokens))) patch.maxTokens = Math.max(16, Math.min(4000, Math.round(Number(b.maxTokens))));
+  if (Number.isFinite(Number(b.timeoutMs))) patch.timeoutMs = Math.max(2000, Math.min(60000, Math.round(Number(b.timeoutMs))));
+  if (Number.isFinite(Number(b.maxRetries))) patch.maxRetries = Math.max(0, Math.min(3, Math.round(Number(b.maxRetries))));
+
+  let warning: string | undefined;
+  if (patch.modelId && !(await isValidModel(patch.modelId))) warning = `"${patch.modelId}" isn't in your OpenRouter model list — saved anyway, but check the ID.`;
+  await setConfig(key, patch);
+  await logEvent({ kind: "audit", actor: `user:${u.id}`, title: `AI model updated — ${key}`, body: patch.modelId ? `model ${patch.modelId}` : "settings changed" });
+  res.json({ ok: true, warning });
 });
 
 // Live event feed.
