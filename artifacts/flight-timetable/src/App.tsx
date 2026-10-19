@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
-import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio } from "lucide-react";
+import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio, FileText, Gauge, Bot, Wrench } from "lucide-react";
 import { VJetstarLogo } from "@/components/VJetstarLogo";
 import { useEffect, useState } from "react";
 import { useIsDesktopApp } from "@/hooks/useSimLink";
@@ -20,6 +20,10 @@ import Liveries from "@/pages/liveries";
 import Software from "@/pages/software";
 import LiveMap from "@/pages/live-map";
 import Dispatch from "@/pages/dispatch";
+import Paperwork from "@/pages/paperwork";
+import OpsDashboard from "@/pages/ops-dashboard";
+import ControlRoom from "@/pages/control-room";
+import MaintenanceOps from "@/pages/maintenance-ops";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -28,6 +32,7 @@ const navItems = [
   { href: "/timetable",  label: "My timetable",     icon: CalendarDays },
   { href: "/flights",    label: "Available routes",  icon: Plane },
   { href: "/dispatch",   label: "Dispatch",          icon: Radio },
+  { href: "/paperwork",  label: "My paperwork",      icon: FileText },
   { href: "/liveries",   label: "Liveries",          icon: Palette },
   { href: "/logs",       label: "Flight records",    icon: ClipboardList },
   { href: "/settings",   label: "Settings",          icon: Settings2 },
@@ -319,12 +324,19 @@ function Layout({ children }: { children: React.ReactNode }) {
           {user.isAdmin && (
             <>
               <div className="hidden px-3 pb-1 pt-5 font-mono text-[9px] font-bold uppercase tracking-[.24em] text-[#9ca3af] md:block">Control tower</div>
-              <Link href="/admin" data-testid="link-nav-admin"
-                className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
-                  path === "/admin" ? "bg-[#fb5713] text-white" : "text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#1a1a1a]"
-                }`}>
-                <ShieldCheck className="h-4 w-4" />Administration
-              </Link>
+              {[
+                { href: "/ops", label: "Ops dashboard", icon: Gauge },
+                { href: "/control-room", label: "AI Control Room", icon: Bot },
+                { href: "/maintenance-ops", label: "Maintenance", icon: Wrench },
+                { href: "/admin", label: "Administration", icon: ShieldCheck },
+              ].map(({ href, label, icon: Icon }) => (
+                <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`}
+                  className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
+                    path === href ? "bg-[#fb5713] text-white" : "text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#1a1a1a]"
+                  }`}>
+                  <Icon className="h-4 w-4" />{label}
+                </Link>
+              ))}
             </>
           )}
 
@@ -367,6 +379,10 @@ function Router() {
         <Route path="/software" component={Software} />
         <Route path="/live-map" component={LiveMap} />
         <Route path="/dispatch" component={Dispatch} />
+        <Route path="/paperwork" component={Paperwork} />
+        <Route path="/ops" component={OpsDashboard} />
+        <Route path="/control-room" component={ControlRoom} />
+        <Route path="/maintenance-ops" component={MaintenanceOps} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>
