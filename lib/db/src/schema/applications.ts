@@ -11,6 +11,8 @@ export const applicationsTable = pgTable("applications", {
   aircraft: text("aircraft").notNull().default(""), // comma-separated fleet codes
   email: text("email"),
   cid: text("cid"),
+  trackingMethod: text("tracking_method").notNull().default("simlink"), // simlink | volanta
+  volantaUsername: text("volanta_username"),
   status: text("status").notNull().default("pending"), // pending | accepted | declined
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   decidedAt: timestamp("decided_at", { withTimezone: true }),

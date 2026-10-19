@@ -85,6 +85,8 @@ export async function initDb(): Promise<void> {
         "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         "decided_at" TIMESTAMPTZ
       );
+      ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "tracking_method" TEXT NOT NULL DEFAULT 'simlink';
+      ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "volanta_username" TEXT;
 
       CREATE TABLE IF NOT EXISTS "notifications" (
         "id"         SERIAL PRIMARY KEY,

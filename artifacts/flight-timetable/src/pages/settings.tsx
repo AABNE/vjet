@@ -2,7 +2,69 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, useUpdatePilotProfile } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
-import { ArrowRight, Check, KeyRound, MonitorCog, ExternalLink, Plane } from "lucide-react";
+import { apiGet, apiPost } from "@/lib/api";
+import { ArrowRight, Check, KeyRound, MonitorCog, ExternalLink, Plane, Loader2, Radar } from "lucide-react";
+
+// Flight tracking method — saved via its own endpoint (not the generated profile
+// update, which doesn't carry these fields).
+function TrackingSection() {
+  const [method, setMethod] = useState<"simlink" | "volanta">("simlink");
+  const [volanta, setVolanta] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    apiGet<{ trackingMethod: string; volantaUsername: string | null }>("/api/pilot/tracking")
+      .then((d) => { setMethod(d.trackingMethod === "volanta" ? "volanta" : "simlink"); setVolanta(d.volantaUsername || ""); })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      await apiPost("/api/pilot/tracking", { trackingMethod: method, volantaUsername: volanta.trim() || null });
+      setMsg({ ok: true, text: "Tracking method saved." });
+    } catch (e: any) { setMsg({ ok: false, text: e?.message || "Could not save." }); }
+    finally { setBusy(false); }
+  }
+
+  const input = "h-12 w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 text-sm text-[#1a1a1a] outline-none transition focus:border-[#fb5713] focus:ring-2 focus:ring-[#fb5713]/20 md:max-w-md";
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+      <div className="flex items-center gap-3 border-b border-[#f3f4f6] px-6 py-5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1a1a1a] text-[#fb5713]"><Radar size={18} /></div>
+        <div>
+          <h2 className="font-bold uppercase tracking-tight text-[#1a1a1a]">Flight tracking</h2>
+          <p className="text-xs text-[#6b7280]">How ops tracks your flights.</p>
+        </div>
+      </div>
+      <div className="space-y-4 p-6">
+        <div className="flex flex-wrap gap-2">
+          {[["simlink", "PC — SimLink"], ["volanta", "Xbox — Volanta"]].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => setMethod(v as any)} disabled={!loaded}
+              className={`rounded-xl border px-4 py-2.5 text-sm font-bold transition ${method === v ? "border-[#fb5713] bg-[#fff7ed] text-[#fb5713]" : "border-[#e5e7eb] text-[#6b7280]"}`}>{l}</button>
+          ))}
+        </div>
+        {method === "volanta" && (
+          <label className="block">
+            <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-[.16em] text-[#6b7280]">Volanta username</span>
+            <input value={volanta} onChange={(e) => setVolanta(e.target.value)} maxLength={40} placeholder="Your Volanta username" className={input} />
+            <span className="mt-2 block text-[11px] text-[#9ca3af]">Stored against your profile for flight matching. Live Volanta tracking depends on a supported integration being available — your PC-side flights use SimLink.</span>
+          </label>
+        )}
+        {method === "simlink" && (
+          <p className="text-[11px] text-[#9ca3af]">PC tracking uses the Sim Link desktop app — no username needed. Download it from the Software tab.</p>
+        )}
+        {msg && <div className={`rounded-xl px-3 py-2 text-xs ${msg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{msg.text}</div>}
+        <button type="button" onClick={save} disabled={busy || !loaded} className="flex items-center gap-2 rounded-xl bg-[#1a1a1a] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-black disabled:opacity-50">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Save tracking method
+        </button>
+      </div>
+    </section>
+  );
+}
 
 type AircraftType = "A320" | "A20N" | "A21N" | "B788";
 const fleetOptions: { code: AircraftType; label: string }[] = [
@@ -194,6 +256,9 @@ export default function Settings() {
             </label>
           </div>
         </section>
+
+        {/* Flight tracking method */}
+        <TrackingSection />
 
         {save.error && (
           <div role="alert" data-testid="status-settings-error" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
