@@ -13,4 +13,4 @@ export const db = drizzle(pool, { schema });
 
 export * from "./schema";
 // Re-export drizzle helpers so routes don't import from drizzle-orm directly
-export { eq, ne, and, or, inArray, sql, desc, gte, lt, lte, isNull } from "drizzle-orm";
+export { eq, ne, and, or, inArray, sql, desc, asc, gte, gt, lt, lte, isNull, isNotNull, count, like, ilike } from "drizzle-orm";

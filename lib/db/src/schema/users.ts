@@ -16,6 +16,9 @@ export const usersTable = pgTable("users", {
   // Presence, updated by the Sim Link desktop heartbeat (used for no-show paging).
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   msfsRunning: boolean("msfs_running").notNull().default(false),
+  // Flight tracking: "simlink" (PC) | "volanta" (Xbox).
+  trackingMethod: text("tracking_method").notNull().default("simlink"),
+  volantaUsername: text("volanta_username"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1,0 +1,126 @@
+// Fleet + maintenance core: aircraft availability, assignments, and the
+// precautionary virtual-maintenance-hold workflow. Backend-enforced — a held
+// aircraft can never be assigned or marked dispatch-ready.
+import {
+  db, eq, and,
+  aircraftTable, aircraftAssignmentsTable, maintenanceReportsTable,
+  dispatchRecordsTable, timetableTable, flightsTable,
+} from "@workspace/db";
+import { logEvent } from "./ops-core";
+import { notify } from "./ops";
+
+export async function isHeld(registration: string): Promise<boolean> {
+  const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, registration));
+  return !!ac && ac.status !== "active";
+}
+
+// An active aircraft of the given type that isn't held and isn't already
+// assigned to an open sector.
+export async function findReplacement(type: string, excludeReg?: string): Promise<string | null> {
+  const fleet = await db.select().from(aircraftTable)
+    .where(and(eq(aircraftTable.type, type), eq(aircraftTable.status, "active")));
+  const openAssigns = await db.select().from(aircraftAssignmentsTable)
+    .where(eq(aircraftAssignmentsTable.status, "assigned"));
+  const busy = new Set(openAssigns.map((a) => a.registration));
+  for (const ac of fleet) {
+    if (excludeReg && ac.registration === excludeReg) continue;
+    if (!busy.has(ac.registration)) return ac.registration;
+  }
+  return null;
+}
+
+// Assign (or reassign) a registration to a timetable sector. Refuses a held
+// aircraft. `by` is "user:<id>" or "agent:<key>".
+export async function assignAircraft(
+  opts: { timetableId: number; flightId: number; registration: string; by: string; reason?: string },
+): Promise<{ ok: boolean; error?: string }> {
+  if (await isHeld(opts.registration)) return { ok: false, error: "Aircraft is on a maintenance hold." };
+  const [existing] = await db.select().from(aircraftAssignmentsTable)
+    .where(and(eq(aircraftAssignmentsTable.timetableId, opts.timetableId), eq(aircraftAssignmentsTable.status, "assigned")));
+  if (existing) {
+    await db.update(aircraftAssignmentsTable)
+      .set({ registration: opts.registration, reason: opts.reason ?? null, assignedBy: opts.by, updatedAt: new Date() })
+      .where(eq(aircraftAssignmentsTable.id, existing.id));
+  } else {
+    await db.insert(aircraftAssignmentsTable).values({
+      timetableId: opts.timetableId, flightId: opts.flightId, registration: opts.registration,
+      assignedBy: opts.by, reason: opts.reason ?? null,
+    });
+  }
+  return { ok: true };
+}
+
+// Upcoming (pending/active) sectors whose assigned aircraft is `registration`.
+export async function sectorsForRegistration(registration: string) {
+  const assigns = await db.select().from(aircraftAssignmentsTable)
+    .where(and(eq(aircraftAssignmentsTable.registration, registration), eq(aircraftAssignmentsTable.status, "assigned")));
+  const out = [];
+  for (const a of assigns) {
+    if (a.timetableId == null) continue;
+    const [tt] = await db.select().from(timetableTable).where(eq(timetableTable.id, a.timetableId));
+    if (!tt || (tt.status !== "pending" && tt.status !== "active")) continue;
+    const [f] = await db.select().from(flightsTable).where(eq(flightsTable.id, tt.flightId));
+    out.push({ assignment: a, timetable: tt, flight: f });
+  }
+  return out;
+}
+
+// Apply a precautionary hold. Grounds the aircraft, blocks dispatch-ready on its
+// sectors, and returns the affected sectors for the fleet manager to act on.
+export async function applyHold(
+  registration: string,
+  reason: string,
+  ctx: { reportId?: number; actor: string },
+): Promise<{ affected: Awaited<ReturnType<typeof sectorsForRegistration>> }> {
+  await db.insert(aircraftTable).values({ registration, type: "UNKNOWN", status: "maintenance_hold", note: reason })
+    .onConflictDoUpdate({ target: aircraftTable.registration, set: { status: "maintenance_hold", note: reason, updatedAt: new Date() } });
+
+  if (ctx.reportId != null) {
+    await db.update(maintenanceReportsTable)
+      .set({ holdActive: true, status: "maintenance_hold", updatedAt: new Date() })
+      .where(eq(maintenanceReportsTable.id, ctx.reportId));
+  }
+
+  const affected = await sectorsForRegistration(registration);
+
+  // Any dispatch record on affected sectors drops to hold.
+  for (const s of affected) {
+    if (s.timetable.id != null) {
+      await db.update(dispatchRecordsTable).set({ status: "hold", updatedAt: new Date() })
+        .where(eq(dispatchRecordsTable.timetableId, s.timetable.id));
+    }
+  }
+
+  await logEvent({
+    kind: "aircraft_hold", severity: "critical", actor: ctx.actor, agentKey: "maintenance",
+    title: `${registration} placed on maintenance hold`,
+    body: `${reason}. ${affected.length} upcoming sector(s) affected.`,
+    refType: "aircraft", refId: registration,
+  });
+  return { affected };
+}
+
+// Clear a hold — reviewer/admin only (enforced by the route). Separate from
+// resolving the maintenance report.
+export async function clearHold(
+  registration: string,
+  ctx: { userId: number; reason: string; reportId?: number },
+): Promise<void> {
+  await db.update(aircraftTable).set({ status: "active", note: null, updatedAt: new Date() })
+    .where(eq(aircraftTable.registration, registration));
+  if (ctx.reportId != null) {
+    await db.update(maintenanceReportsTable)
+      .set({ holdActive: false, clearedByUserId: ctx.userId, clearedAt: new Date(), clearReason: ctx.reason, updatedAt: new Date() })
+      .where(eq(maintenanceReportsTable.id, ctx.reportId));
+  }
+  await logEvent({
+    kind: "audit", severity: "info", actor: `user:${ctx.userId}`, agentKey: "maintenance",
+    title: `${registration} hold cleared`, body: ctx.reason, refType: "aircraft", refId: registration,
+  });
+}
+
+// Notify a pilot (and log). Reuses the in-app notifications; Discord handled by
+// the comms agent elsewhere.
+export async function notifyPilot(userId: number, title: string, body: string): Promise<void> {
+  await notify(userId, "ops", title, body);
+}
