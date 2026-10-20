@@ -45,6 +45,7 @@ export async function initDb(): Promise<void> {
       );
 
       ALTER TABLE "flights" ADD COLUMN IF NOT EXISTS "departs_at" TIMESTAMPTZ;
+      ALTER TABLE "flights" ADD COLUMN IF NOT EXISTS "registration" TEXT;
 
       CREATE TABLE IF NOT EXISTS "timetable" (
         "id"                      SERIAL PRIMARY KEY,
@@ -290,15 +291,18 @@ export async function initDb(): Promise<void> {
       );
     `);
 
-    // Seed a small virtual fleet (real Jetstar registrations) if empty.
+    // Seed a virtual fleet (plausible Jetstar-style registrations) if empty.
+    // Enough tails that the rotation solver can cover the daily schedule.
     const fleet = await client.query(`SELECT 1 FROM "aircraft" LIMIT 1`);
     if (fleet.rows.length === 0) {
-      const seed: Array<[string, string]> = [
-        ["VH-VFO", "A320"], ["VH-VFQ", "A320"], ["VH-VGF", "A320"], ["VH-XNJ", "A320"],
-        ["VH-A5A", "A20N"], ["VH-A5B", "A20N"], ["VH-A5C", "A20N"],
-        ["VH-OFE", "A21N"], ["VH-OFL", "A21N"], ["VH-OFW", "A21N"],
-        ["VH-VKD", "B788"], ["VH-VKF", "B788"], ["VH-VKJ", "B788"],
-      ];
+      const seed: Array<[string, string]> = [];
+      const gen = (prefix: string, letters: string, type: string) => {
+        for (const l of letters) seed.push([`${prefix}${l}`, type]);
+      };
+      gen("VH-VG", "ABCDEFGHJKLMNP", "A320"); // 14 A320
+      gen("VH-A5", "ABCDEFGHJK", "A20N");       // 10 A320neo
+      gen("VH-OF", "ABCDEFGH", "A21N");         // 8 A321neo
+      gen("VH-VK", "ABCDEF", "B788");           // 6 787-8
       for (const [reg, type] of seed) {
         await client.query(
           `INSERT INTO "aircraft" (registration, type) VALUES ($1, $2) ON CONFLICT (registration) DO NOTHING`,

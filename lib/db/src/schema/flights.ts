@@ -15,6 +15,9 @@ export const flightsTable = pgTable("flights", {
   // cutoff is computed from this so it's correct regardless of the origin's
   // timezone/DST. Nullable for legacy rows that only have local date + time.
   departsAt: timestamp("departs_at", { withTimezone: true }),
+  // Tail assigned by the rotation solver at generation (authoritative planned
+  // registration). A pilot-side swap overrides this via aircraft_assignments.
+  registration: text("registration"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -10,9 +10,19 @@
 // Routes disappear 30 minutes before departure. Flights already in a pilot's
 // timetable are never deleted (that would wipe their logbook).
 
-import { db, flightsTable, timetableTable, inArray, type InsertFlight } from "@workspace/db";
+import { db, flightsTable, timetableTable, aircraftTable, inArray, eq, type InsertFlight } from "@workspace/db";
 import { logger } from "./logger";
 import { ROUTE_PAIRS, AIRPORT_TZ, type RoutePair } from "../data/jetstar-network";
+import { assignRotations, type RotFlight } from "./rotations";
+
+// Default fleet used only when no live fleet is supplied (unit tests). Mirrors
+// the seeded registrations so default assignments reference real tails.
+export const DEFAULT_FLEET: Record<string, string[]> = {
+  A320: "ABCDEFGHJKLMNP".split("").map((l) => `VH-VG${l}`),
+  A20N: "ABCDEFGHJK".split("").map((l) => `VH-A5${l}`),
+  A21N: "ABCDEFGH".split("").map((l) => `VH-OF${l}`),
+  B788: "ABCDEF".split("").map((l) => `VH-VK${l}`),
+};
 
 const CUTOFF_MIN = 30;        // hide/prune this long before departure
 const PLAN_DAYS = 3;          // today + next 2 days
@@ -123,9 +133,12 @@ function keyOf(flightNumber: string, flightDate: string): string {
 // Pure: the full set of flights that SHOULD exist right now (today + next 2 days,
 // per origin-local operation, excluding anything already within the cutoff).
 // Keyed by "flightNumber|flightDate". No DB access — directly unit-testable.
-export function computeDesiredFlights(now: Date = new Date()): Map<string, InsertFlight> {
+export function computeDesiredFlights(now: Date = new Date(), fleet: Record<string, string[]> = DEFAULT_FLEET): Map<string, InsertFlight> {
   const cutoffMs = CUTOFF_MIN * 60 * 1000;
-  const desired = new Map<string, InsertFlight>();
+
+  // 1) Build the FULL day's candidate flights (no cutoff filter yet) so tail
+  //    assignment is stable regardless of how many have been pruned.
+  const all: Array<{ key: string; flight: InsertFlight; departsAtMs: number }> = [];
   for (const svc of SERVICES) {
     const tz = AIRPORT_TZ[svc.from];
     if (!tz) continue;
@@ -138,22 +151,32 @@ export function computeDesiredFlights(now: Date = new Date()): Map<string, Inser
         const hh = Math.floor(mins / 60);
         const mm = mins % 60;
         const departsAt = zonedToUtc(date.y, date.mo, date.d, hh, mm, tz);
-        // Don't create flights that are already within the cutoff / in the past.
-        if (departsAt.getTime() - now.getTime() <= cutoffMs) continue;
         const flightNumber = `JQ${svc.flightNoBase + i}`;
         const flightDate = dateStr(date);
-        desired.set(keyOf(flightNumber, flightDate), {
-          flightNumber,
-          departure: svc.from,
-          arrival: svc.to,
-          aircraft: svc.aircraft,
-          departureTime: `${pad(hh)}:${pad(mm)}`,
-          flightDate,
-          durationMinutes: svc.durationMin,
-          departsAt,
+        const key = keyOf(flightNumber, flightDate);
+        all.push({
+          key, departsAtMs: departsAt.getTime(),
+          flight: {
+            flightNumber, departure: svc.from, arrival: svc.to, aircraft: svc.aircraft,
+            departureTime: `${pad(hh)}:${pad(mm)}`, flightDate, durationMinutes: svc.durationMin, departsAt,
+          },
         });
       }
     }
+  }
+
+  // 2) Solve rotations over the full set → a tail per flight.
+  const rot: RotFlight[] = all.map((c) => ({
+    key: c.key, departure: c.flight.departure, arrival: c.flight.arrival,
+    aircraft: c.flight.aircraft, departsAtMs: c.departsAtMs, durationMin: c.flight.durationMinutes, flightDate: c.flight.flightDate,
+  }));
+  const regoByKey = assignRotations(rot, fleet);
+
+  // 3) Emit only the flights still outside the cutoff, carrying their tail.
+  const desired = new Map<string, InsertFlight>();
+  for (const c of all) {
+    if (c.departsAtMs - now.getTime() <= cutoffMs) continue;
+    desired.set(c.key, { ...c.flight, registration: regoByKey.get(c.key) ?? null });
   }
   return desired;
 }
@@ -161,8 +184,15 @@ export function computeDesiredFlights(now: Date = new Date()): Map<string, Inser
 async function tick(): Promise<void> {
   const now = new Date();
 
+  // Live fleet: only ACTIVE aircraft are available for rotations, so an aircraft
+  // on a maintenance hold / grounded automatically gets no flights.
+  const fleetRows = await db.select().from(aircraftTable).where(eq(aircraftTable.status, "active"));
+  const fleet: Record<string, string[]> = {};
+  for (const a of fleetRows) (fleet[a.type] ??= []).push(a.registration);
+  const fleetByType = Object.keys(fleet).length ? fleet : DEFAULT_FLEET;
+
   // Build the desired set of flights for the planning window.
-  const desired = computeDesiredFlights(now);
+  const desired = computeDesiredFlights(now, fleetByType);
 
   // Current DB state.
   const existing = await db.select().from(flightsTable);
@@ -179,6 +209,17 @@ async function tick(): Promise<void> {
 
   for (let i = 0; i < toInsert.length; i += 250) {
     await db.insert(flightsTable).values(toInsert.slice(i, i + 250));
+  }
+
+  // Keep tails on existing, not-yet-picked-up flights in sync with the solver
+  // (so a newly-held aircraft's upcoming flights get reassigned). Protected
+  // flights (in a pilot's timetable) are left to the fleet manager / swaps.
+  for (const f of existing) {
+    if (protectedIds.has(f.id)) continue;
+    const want = desired.get(keyOf(f.flightNumber, f.flightDate));
+    if (want && (want.registration ?? null) !== (f.registration ?? null)) {
+      await db.update(flightsTable).set({ registration: want.registration ?? null }).where(eq(flightsTable.id, f.id));
+    }
   }
 
   // Prune flights that are no longer part of the schedule (stale day, past the

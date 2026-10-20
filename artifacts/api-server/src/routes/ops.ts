@@ -14,6 +14,7 @@ import { collectTracking } from "../lib/tracking";
 import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot } from "../lib/fleet";
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 import { getMany } from "../lib/weather";
+import { applyApproval } from "../lib/approvals";
 
 const router: IRouter = Router();
 
@@ -100,22 +101,14 @@ router.get("/ops/assignments/mine", async (req, res): Promise<void> => {
     .where(and(eq(timetableTable.userId, u.id), inArray(timetableTable.status, ["pending", "active"])));
   const map: Record<number, { registration: string; type: string } | null> = {};
   for (const e of entries) {
+    // A pilot-side swap (aircraft_assignments) overrides the planned tail.
     const [a] = await db.select().from(aircraftAssignmentsTable)
       .where(and(eq(aircraftAssignmentsTable.timetableId, e.id), eq(aircraftAssignmentsTable.status, "assigned")));
-    let reg = a?.registration ?? null;
-    if (!reg) {
-      const [f] = await db.select().from(flightsTable).where(eq(flightsTable.id, e.flightId));
-      if (f) {
-        const picked = await findReplacement(f.aircraft);
-        if (picked) {
-          const r = await assignAircraft({ timetableId: e.id, flightId: e.flightId, registration: picked, by: "agent:fleet-manager", reason: "auto-assigned at pickup" });
-          if (r.ok) reg = picked;
-        }
-      }
-    }
+    const [f] = await db.select().from(flightsTable).where(eq(flightsTable.id, e.flightId));
+    const reg = a?.registration ?? f?.registration ?? null;
     if (reg) {
       const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
-      map[e.id] = { registration: reg, type: ac?.type ?? "" };
+      map[e.id] = { registration: reg, type: ac?.type ?? f?.aircraft ?? "" };
     } else map[e.id] = null;
   }
   res.json({ assignments: map });
@@ -306,34 +299,12 @@ router.post("/ops/approvals/:id/:decision", async (req, res): Promise<void> => {
   }
 
   // Approve → execute the real backend action, then mark applied.
-  const result = await applyApproval(a, u.id);
+  const result = await applyApproval(a, u.id, `user:${u.id}`);
   const newStatus = result.ok ? "applied" : "failed";
   await db.update(approvalsTable).set({ status: newStatus, decidedByUserId: u.id, decidedAt: new Date(), appliedAt: result.ok ? new Date() : null, note: result.ok ? (req.body?.note ?? null) : result.error ?? "apply failed" }).where(eq(approvalsTable.id, id));
   await logEvent({ kind: "audit", severity: result.ok ? "info" : "warn", actor: `user:${u.id}`, title: `${result.ok ? "Applied" : "Apply failed"}: ${a.title}`, body: result.error ?? "", refType: "approval", refId: id });
   res.json({ ok: result.ok, status: newStatus, error: result.error });
 });
-
-async function applyApproval(a: typeof approvalsTable.$inferSelect, userId: number): Promise<{ ok: boolean; error?: string }> {
-  const payload = parseJson(a.payload) || {};
-  if (a.actionType === "aircraft_swap") {
-    const { timetableId, flightId, registration, pilotUserId, flightNumber } = payload;
-    if (!timetableId || !flightId || !registration) return { ok: false, error: "Incomplete swap payload" };
-    const r = await assignAircraft({ timetableId, flightId, registration, by: `user:${userId}`, reason: a.reason ?? "approved swap" });
-    if (!r.ok) return r;
-    await logEvent({ kind: "swap_proposed", actor: `user:${userId}`, agentKey: a.agentKey, title: `Aircraft swap applied — ${flightNumber ?? flightId}`, body: `Now on ${registration}.`, refType: "flight", refId: flightId });
-    if (pilotUserId) await notifyPilot(pilotUserId, `Aircraft change — ${flightNumber ?? ""}`.trim(), `Your flight has been reassigned to ${registration}. Same route and flight number.`);
-    return { ok: true };
-  }
-  if (a.actionType === "clear_hold") {
-    const { registration, reportId } = payload;
-    if (!registration) return { ok: false, error: "No registration" };
-    await clearHold(registration, { userId, reason: a.reason ?? "approved", reportId });
-    return { ok: true };
-  }
-  // route_change / flight_cancel: recorded + logged (timetable left intact for safety).
-  await logEvent({ kind: "route_change", actor: `user:${userId}`, agentKey: a.agentKey, title: `${a.title} (applied)`, body: a.reason ?? "" });
-  return { ok: true };
-}
 
 // ── Fleet / aircraft ─────────────────────────────────────────────────────────
 router.get("/ops/aircraft", async (req, res): Promise<void> => {

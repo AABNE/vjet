@@ -13,6 +13,7 @@ import { collectTracking, type TrackedFlight } from "./tracking";
 import { runAgentTask, logEvent, isPaused, aiSummarize } from "./ops-core";
 import { notify } from "./ops";
 import { refreshAirports, getWeather, isAdverse } from "./weather";
+import { opsManagerReview } from "./approvals";
 
 const TICK_MS = 2 * 60_000;
 
@@ -162,6 +163,9 @@ async function tick(): Promise<void> {
   await dispatchTick();
   await fleetTick();
   await weatherTick();
+  // Operations Manager clears the approval queue autonomously — the human never
+  // needs to action it.
+  if (!(await isPaused("ops-manager"))) await opsManagerReview();
 }
 
 export function startOpsMonitor(): void {
