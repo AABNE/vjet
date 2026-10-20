@@ -182,7 +182,8 @@ export type PartsInventory = typeof partsInventoryTable.$inferSelect;
 export const agentStateTable = pgTable("agent_state", {
   agentKey: text("agent_key").primaryKey(),
   paused: boolean("paused").notNull().default(false),
-  autoApprove: text("auto_approve").notNull().default("[]"), // JSON array of actionTypes allowed to auto-run
+  autoApprove: text("auto_approve").notNull().default("[]"), // legacy: JSON allowlist (now unused — autonomy is the default)
+  manualActions: text("manual_actions").notNull().default("[]"), // JSON array of actionTypes to hold for a human instead of auto-running
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export type AgentState = typeof agentStateTable.$inferSelect;

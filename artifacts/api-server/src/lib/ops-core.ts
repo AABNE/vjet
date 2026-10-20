@@ -109,12 +109,17 @@ export async function isPaused(agentKey: string): Promise<boolean> {
   return !!(g?.paused || a?.paused);
 }
 export async function autoActionAllowed(agentKey: string, actionType: string): Promise<boolean> {
+  // Full autonomy by default: the Operations Manager auto-approves every agent
+  // action on the spot, so nothing ever sits in a pending-approval queue for a
+  // human to action. The only thing that holds an action back is a pause — the
+  // global pause, a pause on this agent, or this action listed in the agent's
+  // manualActions (an explicit "ask me for this one" opt-out).
   const g = await getState("global");
   if (g?.paused) return false;
   const a = await getState(agentKey);
   if (a?.paused) return false;
-  try { return (JSON.parse(a?.autoApprove ?? "[]") as string[]).includes(actionType); }
-  catch { return false; }
+  try { return !((JSON.parse(a?.manualActions ?? "[]") as string[]).includes(actionType)); }
+  catch { return true; }
 }
 export async function setPaused(agentKey: string, paused: boolean): Promise<void> {
   await db.insert(agentStateTable).values({ agentKey, paused, updatedAt: new Date() })

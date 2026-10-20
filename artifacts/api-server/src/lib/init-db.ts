@@ -271,8 +271,10 @@ export async function initDb(): Promise<void> {
         "agent_key"    TEXT PRIMARY KEY,
         "paused"       BOOLEAN NOT NULL DEFAULT FALSE,
         "auto_approve" TEXT NOT NULL DEFAULT '[]',
+        "manual_actions" TEXT NOT NULL DEFAULT '[]',
         "updated_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE "agent_state" ADD COLUMN IF NOT EXISTS "manual_actions" TEXT NOT NULL DEFAULT '[]';
 
       CREATE TABLE IF NOT EXISTS "ai_config" (
         "agent_key"         TEXT PRIMARY KEY,
