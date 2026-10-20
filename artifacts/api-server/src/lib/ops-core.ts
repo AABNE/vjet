@@ -26,12 +26,18 @@ export const AGENTS: { key: string; name: string; responsibility: string; model:
 ];
 export const AGENT_KEYS = AGENTS.map((a) => a.key);
 
+// ── Live event bus (for the Control Room SSE stream) ─────────────────────────
+type OpsListener = (e: Record<string, unknown>) => void;
+const opsListeners = new Set<OpsListener>();
+export function onOpsEvent(fn: OpsListener): () => void { opsListeners.add(fn); return () => opsListeners.delete(fn); }
+function emitOpsEvent(e: Record<string, unknown>): void { for (const fn of opsListeners) { try { fn(e); } catch { /* ignore */ } } }
+
 export async function logEvent(e: {
   kind: string; title: string; body?: string; severity?: Severity;
   agentKey?: string; actor?: string; refType?: string; refId?: string | number; taskRunId?: number;
 }): Promise<void> {
   try {
-    await db.insert(operationalEventsTable).values({
+    const [row] = await db.insert(operationalEventsTable).values({
       kind: e.kind,
       title: e.title,
       body: e.body ?? "",
@@ -41,6 +47,12 @@ export async function logEvent(e: {
       refType: e.refType ?? null,
       refId: e.refId != null ? String(e.refId) : null,
       taskRunId: e.taskRunId ?? null,
+    }).returning();
+    // Push to any live Control Room streams.
+    emitOpsEvent({
+      id: row?.id, kind: e.kind, severity: e.severity ?? "info", title: e.title,
+      body: e.body ?? "", agentKey: e.agentKey ?? null,
+      createdAt: (row?.createdAt ? new Date(row.createdAt as Date) : new Date()).toISOString(),
     });
   } catch (err) {
     logger.warn({ err }, "logEvent failed");

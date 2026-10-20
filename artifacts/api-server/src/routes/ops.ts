@@ -8,7 +8,7 @@ import {
 } from "@workspace/db";
 import {
   AGENTS, logEvent, requestApproval, autoActionAllowed,
-  setPaused, setAutoApprove, recentRuns,
+  setPaused, setAutoApprove, recentRuns, onOpsEvent,
 } from "../lib/ops-core";
 import { collectTracking } from "../lib/tracking";
 import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot, reassignOrCancel } from "../lib/fleet";
@@ -199,6 +199,23 @@ router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
   // Move its remaining booked flights to a spare, or cancel them.
   const moved = await reassignOrCancel(reg, `${reg} grounded: ${reason}`);
   res.json({ ok: true, etaAt: etaAt ? etaAt.toISOString() : null, outstation, maintenance: withMaintenance, ...moved });
+});
+
+// Live event stream for the AI Control Room (Server-Sent Events). Pushes each
+// operational event the instant it's logged, so the feed is real-time.
+router.get("/ops/stream", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.write(": connected\n\n");
+  const send = (e: Record<string, unknown>) => { try { res.write(`event: ops\ndata: ${JSON.stringify(e)}\n\n`); } catch { /* ignore */ } };
+  const off = onOpsEvent(send);
+  const hb = setInterval(() => { try { res.write(": ping\n\n"); } catch { /* ignore */ } }, 20_000);
+  req.on("close", () => { clearInterval(hb); off(); res.end(); });
 });
 
 // Remove an aircraft from the fleet entirely. Its booked flights are moved to a

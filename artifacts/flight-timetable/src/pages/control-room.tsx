@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/components/auth-provider";
@@ -51,6 +51,24 @@ export default function ControlRoom() {
   const approvals = useQuery<{ approvals: Approval[] }>({ queryKey: ["ops-approvals"], queryFn: () => apiGet("/api/ops/approvals?status=pending"), refetchInterval: 10_000, retry: false });
   const events = useQuery<{ events: OpsEvent[] }>({ queryKey: ["ops-events"], queryFn: () => apiGet("/api/ops/events?limit=40"), refetchInterval: 8_000, retry: false });
   const tasks = useQuery<{ tasks: TaskRun[] }>({ queryKey: ["ops-tasks"], queryFn: () => apiGet("/api/ops/tasks"), refetchInterval: 12_000, retry: false });
+
+  // Live stream: push new events into the feed the instant they happen (no reload).
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    const es = new EventSource("/api/ops/stream");
+    es.onopen = () => setLive(true);
+    es.onerror = () => setLive(false); // browser auto-reconnects
+    es.addEventListener("ops", (ev: MessageEvent) => {
+      let e: any; try { e = JSON.parse(ev.data); } catch { return; }
+      qc.setQueryData<{ events: OpsEvent[] }>(["ops-events"], (old) => ({
+        events: [e, ...((old?.events ?? []).filter((x) => x.id !== e.id))].slice(0, 60),
+      }));
+      qc.invalidateQueries({ queryKey: ["ops-tasks"] });
+      qc.invalidateQueries({ queryKey: ["ops-agents"] });
+      qc.invalidateQueries({ queryKey: ["ops-approvals"] });
+    });
+    return () => es.close();
+  }, [qc]);
 
   if (user && user.isAdmin !== true) {
     return <div className="mx-auto max-w-2xl rounded-2xl border border-[#e5e7eb] bg-white p-10 text-center text-[#6b7280]">The AI Control Room is for operations administrators.</div>;
@@ -175,7 +193,11 @@ export default function ControlRoom() {
 
         {/* Live feed */}
         <aside>
-          <h2 className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><Radio className="h-4 w-4 text-[#fb5713]" />Live activity</h2>
+          <h2 className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><Radio className="h-4 w-4 text-[#fb5713]" />Live activity
+            <span className={`ml-auto flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] ${live ? "bg-emerald-50 text-emerald-600" : "bg-[#f3f4f6] text-[#9ca3af]"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${live ? "animate-ping bg-emerald-500" : "bg-[#c7ccd4]"}`} />{live ? "Live" : "Reconnecting"}
+            </span>
+          </h2>
           <div className="space-y-2">
             {(events.data?.events ?? []).map((e) => (
               <div key={e.id} className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5">
