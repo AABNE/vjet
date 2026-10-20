@@ -245,13 +245,13 @@
   }
   /* Page content eases in on route change (keyed by pathname in App). */
   .vj-page { animation: vj-fade-up .28s cubic-bezier(.22,.61,.36,1) both; }
-  .vj-fade { animation: vj-fade .14s ease both; }
-  /* Fast, snappy typing/loading dots for the AI chat. */
-  @keyframes vj-dot { 0%,70%,100% { transform: translateY(0); opacity:.45 } 35% { transform: translateY(-3px); opacity:1 } }
+  .vj-fade { animation: vj-fade .18s ease both; }
+  /* Snappy but calm typing/loading dots for the AI chat. */
+  @keyframes vj-dot { 0%,60%,100% { transform: translateY(0); opacity:.4 } 30% { transform: translateY(-3px); opacity:1 } }
   .vj-typing { display:inline-flex; align-items:center; gap:3px; }
-  .vj-typing i { width:5px; height:5px; border-radius:9999px; background:currentColor; animation: vj-dot .5s ease-in-out infinite; }
-  .vj-typing i:nth-child(2) { animation-delay:.1s }
-  .vj-typing i:nth-child(3) { animation-delay:.2s }
+  .vj-typing i { width:5px; height:5px; border-radius:9999px; background:currentColor; animation: vj-dot .95s ease-in-out infinite; }
+  .vj-typing i:nth-child(2) { animation-delay:.16s }
+  .vj-typing i:nth-child(3) { animation-delay:.32s }
   /* Make common interactive elements feel responsive without per-element classes. */
   a, button, input, select, textarea, [role="button"] {
     transition: background-color .15s ease, color .15s ease, border-color .15s ease,
