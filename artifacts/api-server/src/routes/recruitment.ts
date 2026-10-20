@@ -174,6 +174,65 @@ router.get("/discord-user", async (req: Request, res: Response): Promise<void> =
   }
 });
 
+// ── GET /api/pilot/discord — the signed-in pilot's current linked account ─────
+router.get("/pilot/discord", async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  res.json({ discordId: u?.discordId ?? null });
+});
+
+// ── POST /api/pilot/discord — link the pilot's Discord. Enforces server
+// membership (via a guild-member lookup) so people can't DM random accounts. ──
+router.post("/pilot/discord", async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const token = process.env["DISCORD_BOT_TOKEN"];
+  const guildId = process.env["DISCORD_GUILD_ID"];
+  if (!token) { res.status(503).json({ error: "Discord linking isn't configured on the server." }); return; }
+  if (!guildId) { res.status(503).json({ error: "Discord linking needs DISCORD_GUILD_ID set on the server." }); return; }
+
+  const value = String(req.body?.value || "").trim();
+  const isId = /^[0-9]{17,20}$/.test(value);
+  const isUsername = /^[a-z0-9._]{2,32}$/i.test(value);
+  if (!isId && !isUsername) { res.status(400).json({ error: "Enter a valid Discord username or user ID." }); return; }
+
+  try {
+    let du: { id: string; username: string; global_name?: string | null; avatar?: string | null } | undefined;
+    if (isId) {
+      // Guild-member endpoint → 404 if they're not in the server.
+      const r = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${value}`, { headers: botHeaders(token) });
+      if (r.status === 404) { res.status(404).json({ error: "That account isn't in the vJetstar Discord server. Join the server first, then link." }); return; }
+      if (!r.ok) { res.status(502).json({ error: "Discord lookup failed. Try again shortly." }); return; }
+      du = ((await r.json()) as any).user;
+    } else {
+      const r = await fetch(`${DISCORD_API}/guilds/${guildId}/members/search?query=${encodeURIComponent(value)}&limit=5`, { headers: botHeaders(token) });
+      if (!r.ok) { res.status(502).json({ error: "Username search failed. Try again or use your numeric user ID." }); return; }
+      const members = (await r.json()) as Array<{ user: { id: string; username: string; global_name?: string | null; avatar?: string | null } }>;
+      const lv = value.toLowerCase();
+      du = members.find((m) => m.user.username.toLowerCase() === lv || (m.user.global_name || "").toLowerCase() === lv)?.user;
+      if (!du) { res.status(404).json({ error: "No member with that username in the vJetstar server. Make sure you've joined, or use your numeric user ID." }); return; }
+    }
+    if (!du) { res.status(502).json({ error: "Discord lookup failed. Please try again." }); return; }
+
+    const [taken] = await db.select().from(usersTable).where(eq(usersTable.discordId, du.id));
+    if (taken && taken.id !== userId) { res.status(409).json({ error: "That Discord account is already linked to another pilot." }); return; }
+
+    await db.update(usersTable).set({ discordId: du.id }).where(eq(usersTable.id, userId));
+    res.json({ ok: true, id: du.id, username: du.username, globalName: du.global_name || du.username, avatar: avatarUrl(du) });
+  } catch {
+    res.status(502).json({ error: "Discord linking failed. Please try again." });
+  }
+});
+
+// ── DELETE /api/pilot/discord — unlink ────────────────────────────────────────
+router.delete("/pilot/discord", async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  await db.update(usersTable).set({ discordId: null }).where(eq(usersTable.id, userId));
+  res.json({ ok: true });
+});
+
 // ── POST /api/apply ──────────────────────────────────────────────────────────
 router.post("/apply", async (req: Request, res: Response): Promise<void> => {
   const token = process.env["DISCORD_BOT_TOKEN"];

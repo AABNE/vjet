@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, useUpdatePilotProfile } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
-import { ArrowRight, Check, KeyRound, MonitorCog, ExternalLink, Plane } from "lucide-react";
+import { ArrowRight, Check, KeyRound, MonitorCog, ExternalLink, Plane, MessageCircle, Loader2 } from "lucide-react";
 
 type AircraftType = "A320" | "A20N" | "A21N" | "B788";
 const fleetOptions: { code: AircraftType; label: string }[] = [
@@ -30,6 +30,39 @@ export default function Settings() {
     Array.isArray(pilot?.aircraft) ? pilot.aircraft : ["A320"]
   );
   const [simbriefUsername, setSimbriefUsername] = useState(pilot?.simbriefUsername || "");
+
+  // Discord link state
+  const [discordId, setDiscordId] = useState<string | null>(null);
+  const [discordInput, setDiscordInput] = useState("");
+  const [dcBusy, setDcBusy] = useState(false);
+  const [dcError, setDcError] = useState("");
+  const [dcLinked, setDcLinked] = useState<{ username: string; globalName: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/pilot/discord", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setDiscordId(d.discordId ?? null); })
+      .catch(() => {});
+  }, [user?.id]);
+
+  const linkDiscord = async () => {
+    setDcError(""); setDcBusy(true);
+    try {
+      const res = await fetch("/api/pilot/discord", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ value: discordInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setDcError(data.error || "Could not link that account."); }
+      else { setDiscordId(data.id); setDcLinked({ username: data.username, globalName: data.globalName }); setDiscordInput(""); }
+    } catch { setDcError("Network error. Please try again."); }
+    finally { setDcBusy(false); }
+  };
+  const unlinkDiscord = async () => {
+    setDcBusy(true);
+    try { await fetch("/api/pilot/discord", { method: "DELETE", credentials: "include" }); setDiscordId(null); setDcLinked(null); }
+    finally { setDcBusy(false); }
+  };
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -192,6 +225,53 @@ export default function Settings() {
                 </a>
               </span>
             </label>
+          </div>
+        </section>
+
+        {/* Discord */}
+        <section className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+          <div className="flex items-center gap-3 border-b border-[#f3f4f6] px-6 py-5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5865F2] text-white">
+              <MessageCircle size={18} />
+            </div>
+            <div>
+              <h2 className="font-bold uppercase tracking-tight text-[#1a1a1a]">Discord</h2>
+              <p className="text-xs text-[#6b7280]">Link your Discord so ops notifications reach your inbox.</p>
+            </div>
+          </div>
+          <div className="p-6">
+            {discordId ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                  <Check className="h-4 w-4" /> Linked{dcLinked ? ` — @${dcLinked.username}` : ""}
+                </span>
+                <button onClick={unlinkDiscord} disabled={dcBusy}
+                  className="rounded-xl border border-[#e5e7eb] px-3 py-2 text-xs font-bold uppercase tracking-wider text-[#6b7280] hover:border-red-200 hover:text-red-600 disabled:opacity-50">
+                  Unlink
+                </button>
+              </div>
+            ) : (
+              <label className="block">
+                <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-[.16em] text-[#6b7280]">Discord username or user ID</span>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={discordInput}
+                    onChange={(e) => setDiscordInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (discordInput.trim()) linkDiscord(); } }}
+                    placeholder="e.g. aussieaviationbne"
+                    className="h-12 flex-1 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 text-sm text-[#1a1a1a] outline-none transition focus:border-[#fb5713] focus:ring-2 focus:ring-[#fb5713]/20 md:max-w-sm"
+                  />
+                  <button onClick={linkDiscord} disabled={dcBusy || !discordInput.trim()}
+                    className="flex h-12 items-center gap-2 rounded-xl bg-[#5865F2] px-5 text-sm font-bold text-white transition hover:bg-[#4752c4] disabled:opacity-50">
+                    {dcBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Link
+                  </button>
+                </div>
+                {dcError && <span className="mt-2 block text-[11px] text-red-600">{dcError}</span>}
+                <span className="mt-2 block text-[11px] text-[#9ca3af]">
+                  We look you up in the vJetstar Discord server — you must be a member. Use your username (lowercase) or numeric user ID.
+                </span>
+              </label>
+            )}
           </div>
         </section>
 
