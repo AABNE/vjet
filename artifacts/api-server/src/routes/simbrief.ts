@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 
 import { db, flightsTable, timetableTable, usersTable, eq, and } from "@workspace/db";
 import { GetTimetableResponse } from "@workspace/api-zod";
+import { findBookingConflict, conflictMessage } from "../lib/booking";
 
 const router: IRouter = Router();
 type JsonObject = Record<string, unknown>;
@@ -165,6 +166,7 @@ router.post("/simbrief/import", async (req, res): Promise<void> => {
       departureTime,
       flightDate,
       durationMinutes: duration,
+      departsAt: scheduledOut,
     }).returning();
   }
 
@@ -177,6 +179,12 @@ router.post("/simbrief/import", async (req, res): Promise<void> => {
     ));
   if (existingEntry && existingEntry.status !== "completed") {
     res.status(409).json({ error: "This SimBrief flight is already in your timetable." });
+    return;
+  }
+
+  const clash = await findBookingConflict(user.id, scheduledOut, duration);
+  if (clash) {
+    res.status(409).json({ error: conflictMessage(clash) });
     return;
   }
 

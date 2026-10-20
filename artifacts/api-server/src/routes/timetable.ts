@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
 import { getBan } from "../lib/ops";
+import { findBookingConflict, conflictMessage } from "../lib/booking";
 
 import {
   AddToTimetableBody,
@@ -109,6 +110,12 @@ router.post("/timetable", async (req, res): Promise<void> => {
     return;
   }
 
+  const clash = await findBookingConflict(req.session.userId, flight.departsAt, flight.durationMinutes);
+  if (clash) {
+    res.status(409).json({ error: conflictMessage(clash) });
+    return;
+  }
+
   const [entry] = await db
     .insert(timetableTable)
     .values({
@@ -176,6 +183,12 @@ router.post("/timetable/custom", async (req, res): Promise<void> => {
   if (!flightNumber) flightNumber = `JQ${Math.floor(Math.random() * 900) + 100}`;
 
   const departsAt = new Date(`${flightDate}T${departureTime}:00Z`);
+
+  const clash = await findBookingConflict(req.session.userId, departsAt, durationMinutes);
+  if (clash) {
+    res.status(409).json({ error: conflictMessage(clash) });
+    return;
+  }
 
   const [flight] = await db.insert(flightsTable).values({
     flightNumber,
