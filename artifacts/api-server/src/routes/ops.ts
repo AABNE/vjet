@@ -54,6 +54,18 @@ router.post("/pilot/tracking", async (req, res): Promise<void> => {
   res.json({ ok: true, trackingMethod: method, volantaUsername: volanta });
 });
 
+// Realistic-routing preference: only see flights from the pilot's current spot.
+router.get("/pilot/route-continuity", async (req, res): Promise<void> => {
+  const u = await requireUser(req, res); if (!u) return;
+  res.json({ enabled: !!u.routeContinuity });
+});
+router.post("/pilot/route-continuity", async (req, res): Promise<void> => {
+  const u = await requireUser(req, res); if (!u) return;
+  const enabled = req.body?.enabled === true || req.body?.enabled === "1";
+  await db.update(usersTable).set({ routeContinuity: enabled }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true, enabled });
+});
+
 // Is the pilot hub (Sim Link desktop app) connected right now? Drives the
 // warnings + whether a flight can be started / cleared.
 router.get("/pilot/hub-status", async (req, res): Promise<void> => {

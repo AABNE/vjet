@@ -64,6 +64,23 @@ export default function Settings() {
     finally { setDcBusy(false); }
   };
 
+  // Realistic routing (continue from last airport)
+  const [routeCont, setRouteCont] = useState(false);
+  const [rcBusy, setRcBusy] = useState(false);
+  useEffect(() => {
+    fetch("/api/pilot/route-continuity", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setRouteCont(!!d.enabled); })
+      .catch(() => {});
+  }, [user?.id]);
+  const toggleRouteCont = async () => {
+    const next = !routeCont;
+    setRcBusy(true); setRouteCont(next);
+    try { await fetch("/api/pilot/route-continuity", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ enabled: next }) }); }
+    catch { setRouteCont(!next); }
+    finally { setRcBusy(false); }
+  };
+
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -272,6 +289,28 @@ export default function Settings() {
                 </span>
               </label>
             )}
+          </div>
+        </section>
+
+        {/* Realistic routing */}
+        <section className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+          <div className="flex items-center gap-3 border-b border-[#f3f4f6] px-6 py-5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1a1a1a] text-[#fb5713]">
+              <Plane size={18} />
+            </div>
+            <div>
+              <h2 className="font-bold uppercase tracking-tight text-[#1a1a1a]">Realistic routing</h2>
+              <p className="text-xs text-[#6b7280]">Fly a continuous rotation — only see flights from where you last landed.</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 p-6">
+            <p className="text-sm text-[#6b7280]">
+              When on, Available routes only shows flights departing from your current airport (where your last flight arrived). Turn off to pick any flight for your aircraft.
+            </p>
+            <button onClick={toggleRouteCont} disabled={rcBusy} aria-pressed={routeCont}
+              className={`flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition ${routeCont ? "justify-end bg-[#fb5713]" : "justify-start bg-[#e5e7eb]"} disabled:opacity-50`}>
+              <span className="h-6 w-6 rounded-full bg-white shadow" />
+            </button>
           </div>
         </section>
 

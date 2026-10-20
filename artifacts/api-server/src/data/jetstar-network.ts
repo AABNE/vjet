@@ -28,9 +28,11 @@ export const AIRPORT_TZ: Record<string, string> = {
   BNE: "Australia/Brisbane", OOL: "Australia/Brisbane", CNS: "Australia/Brisbane",
   TSV: "Australia/Brisbane", MCY: "Australia/Brisbane", PPP: "Australia/Brisbane",
   MKY: "Australia/Brisbane", ROK: "Australia/Brisbane", HVB: "Australia/Brisbane",
+  HTI: "Australia/Brisbane", GLT: "Australia/Brisbane", EMD: "Australia/Brisbane",
   // Australia — NSW / ACT (DST)
   SYD: "Australia/Sydney", NTL: "Australia/Sydney", BNK: "Australia/Sydney",
-  CBR: "Australia/Sydney", WSI: "Australia/Sydney",
+  CBR: "Australia/Sydney", WSI: "Australia/Sydney", CFS: "Australia/Sydney",
+  PQQ: "Australia/Sydney",
   // Australia — Victoria (DST)
   MEL: "Australia/Melbourne", AVV: "Australia/Melbourne",
   // Australia — Tasmania (DST)
@@ -38,9 +40,10 @@ export const AIRPORT_TZ: Record<string, string> = {
   // Australia — South Australia (DST, UTC+9:30)
   ADL: "Australia/Adelaide",
   // Australia — Northern Territory (no DST, UTC+9:30)
-  DRW: "Australia/Darwin", AYQ: "Australia/Darwin",
+  DRW: "Australia/Darwin", AYQ: "Australia/Darwin", ASP: "Australia/Darwin",
   // Australia — Western Australia (UTC+8)
   PER: "Australia/Perth", BQB: "Australia/Perth",
+  BME: "Australia/Perth", KTA: "Australia/Perth", PHE: "Australia/Perth", NTN: "Australia/Perth",
   // New Zealand (DST)
   AKL: "Pacific/Auckland", WLG: "Pacific/Auckland", CHC: "Pacific/Auckland",
   ZQN: "Pacific/Auckland", DUD: "Pacific/Auckland", HLZ: "Pacific/Auckland",
@@ -50,6 +53,7 @@ export const AIRPORT_TZ: Record<string, string> = {
   SGN: "Asia/Ho_Chi_Minh", MNL: "Asia/Manila", CEB: "Asia/Manila",
   // Pacific
   NAN: "Pacific/Fiji", RAR: "Pacific/Rarotonga", VLI: "Pacific/Efate",
+  HNL: "Pacific/Honolulu", NOU: "Pacific/Noumea",
 };
 
 // A city pair. Both directions are generated from it. `freq` is flights per day
@@ -179,4 +183,58 @@ export const ROUTE_PAIRS: RoutePair[] = [
   { a: "MEL", b: "NAN", ac: "A21N", durationMin: 300, freq: 1, days: TUE_THU_SAT },
   { a: "SYD", b: "VLI", ac: "A21N", durationMin: 185, freq: 1, days: MON_THU_SAT },
   { a: "BNE", b: "VLI", ac: "A21N", durationMin: 175, freq: 1, days: WED_FRI_SUN },
+
+  // ── Domestic — more east-coast + regional connections ───────────────────────
+  { a: "BNE", b: "OOL", ac: "A320", durationMin: 45, freq: 2, days: DAILY },
+  { a: "SYD", b: "CBR", ac: "A320", durationMin: 50, freq: 2, days: MON_WED_FRI },
+  { a: "MEL", b: "SYD", ac: "A20N", durationMin: 95, freq: 4, days: DAILY },
+  { a: "BNE", b: "MEL", ac: "A20N", durationMin: 130, freq: 3, days: DAILY },
+  { a: "SYD", b: "CFS", ac: "A320", durationMin: 75, freq: 2, days: DAILY },
+  { a: "MEL", b: "CFS", ac: "A320", durationMin: 120, freq: 1, days: THU_SUN },
+  { a: "BNE", b: "LST", ac: "A320", durationMin: 165, freq: 1, days: WED_FRI_SUN },
+  { a: "BNE", b: "HBA", ac: "A320", durationMin: 175, freq: 1, days: DAILY },
+  { a: "SYD", b: "MKY", ac: "A320", durationMin: 130, freq: 1, days: MON_THU_SAT },
+  { a: "BNE", b: "GLT", ac: "A320", durationMin: 80, freq: 1, days: MON_WED_FRI },
+  { a: "BNE", b: "EMD", ac: "A320", durationMin: 95, freq: 1, days: TUE_THU_SAT },
+  { a: "SYD", b: "PQQ", ac: "A320", durationMin: 95, freq: 1, days: FRI_MON },
+
+  // ── Domestic — Whitsundays / leisure Queensland ─────────────────────────────
+  { a: "SYD", b: "HTI", ac: "A320", durationMin: 150, freq: 1, days: DAILY },
+  { a: "MEL", b: "HTI", ac: "A320", durationMin: 185, freq: 1, days: WED_FRI_SUN },
+  { a: "BNE", b: "HTI", ac: "A320", durationMin: 110, freq: 1, days: WEEKEND },
+  { a: "MEL", b: "TSV", ac: "A20N", durationMin: 205, freq: 1, days: TUE_THU_SAT },
+  { a: "MEL", b: "OOL", ac: "A20N", durationMin: 130, freq: 3, days: DAILY },
+
+  // ── Domestic — central Australia / outback ──────────────────────────────────
+  { a: "ADL", b: "ASP", ac: "A320", durationMin: 120, freq: 1, days: MON_WED_FRI },
+  { a: "MEL", b: "ASP", ac: "A320", durationMin: 180, freq: 1, days: THU_SUN },
+  { a: "BNE", b: "ASP", ac: "A320", durationMin: 180, freq: 1, days: WEEKEND },
+  { a: "ADL", b: "AYQ", ac: "A320", durationMin: 125, freq: 1, days: TUE_THU_SAT },
+
+  // ── Western Australia — intrastate ──────────────────────────────────────────
+  { a: "PER", b: "BME", ac: "A320", durationMin: 165, freq: 1, days: DAILY },
+  { a: "PER", b: "KTA", ac: "A320", durationMin: 140, freq: 1, days: MON_WED_FRI },
+  { a: "PER", b: "PHE", ac: "A320", durationMin: 150, freq: 1, days: TUE_THU_SAT },
+  { a: "PER", b: "NTN", ac: "A320", durationMin: 60, freq: 1, days: WEEKEND },
+  { a: "PER", b: "ADL", ac: "A21N", durationMin: 215, freq: 2, days: DAILY },
+
+  // ── More trans-Tasman + NZ connections ──────────────────────────────────────
+  { a: "AKL", b: "ADL", ac: "A20N", durationMin: 250, freq: 1, days: WED_FRI_SUN },
+  { a: "WLG", b: "SYD", ac: "A20N", durationMin: 200, freq: 1, days: DAILY },
+  { a: "WLG", b: "MEL", ac: "A320", durationMin: 235, freq: 1, days: TUE_THU_SAT },
+  { a: "ZQN", b: "BNE", ac: "A20N", durationMin: 215, freq: 1, days: THU_SUN },
+
+  // ── International — Bali / SE Asia additions ────────────────────────────────
+  { a: "PER", b: "SIN", ac: "A21N", durationMin: 320, freq: 1, days: DAILY },
+  { a: "DRW", b: "SIN", ac: "A21N", durationMin: 275, freq: 1, days: MON_THU_SAT },
+  { a: "BNE", b: "SIN", ac: "B788", durationMin: 500, freq: 1, days: WED_FRI_SUN },
+  { a: "ADL", b: "SIN", ac: "A21N", durationMin: 385, freq: 1, days: TUE_THU_SAT },
+  { a: "PER", b: "DRW", ac: "A21N", durationMin: 215, freq: 1, days: THU_SUN },
+
+  // ── International — Pacific / Hawaii ─────────────────────────────────────────
+  { a: "SYD", b: "HNL", ac: "B788", durationMin: 585, freq: 1, days: WED_FRI_SUN },
+  { a: "MEL", b: "HNL", ac: "B788", durationMin: 640, freq: 1, days: THU_SUN },
+  { a: "SYD", b: "NOU", ac: "A21N", durationMin: 165, freq: 1, days: MON_THU_SAT },
+  { a: "BNE", b: "NAN", ac: "A21N", durationMin: 215, freq: 1, days: DAILY },
+  { a: "MEL", b: "RAR", ac: "B788", durationMin: 420, freq: 1, days: WEEKEND },
 ];

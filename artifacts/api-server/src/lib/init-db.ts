@@ -31,6 +31,7 @@ export async function initDb(): Promise<void> {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "tracking_method" TEXT NOT NULL DEFAULT 'simlink';
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "volanta_username" TEXT;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "discord_id" TEXT;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "route_continuity" BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS "flights" (
         "id"               SERIAL PRIMARY KEY,

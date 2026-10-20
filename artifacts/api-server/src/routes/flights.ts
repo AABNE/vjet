@@ -27,8 +27,25 @@ router.get("/flights", async (req, res): Promise<void> => {
 
   const now = new Date();
 
+  // Realistic routing: if the pilot has it on, they continue from where their
+  // last flight landed — only show flights departing that airport.
+  let currentAirport: string | null = null;
+  if (user.routeContinuity) {
+    const mine = await db.select().from(timetableTable).where(eq(timetableTable.userId, user.id));
+    const flightIds = [...new Set(mine.map((e) => e.flightId))];
+    if (flightIds.length) {
+      const myFlights = await db.select().from(flightsTable).where(inArray(flightsTable.id, flightIds));
+      let latestMs = -Infinity;
+      for (const f of myFlights) {
+        const ms = f.departsAt ? new Date(f.departsAt).getTime() : new Date(`${f.flightDate}T${f.departureTime}:00Z`).getTime();
+        if (ms > latestMs) { latestMs = ms; currentAirport = f.arrival; }
+      }
+    }
+  }
+
   const available = allFlights.filter(f => {
     if (takenFlightIds.has(f.id)) return false;
+    if (currentAirport && f.departure !== currentAirport) return false;
     // Hide routes within 30 minutes of (or past) their scheduled departure.
     return isFlightAvailable(f, now);
   });
