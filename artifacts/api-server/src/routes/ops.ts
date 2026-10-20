@@ -463,7 +463,7 @@ router.get("/ops/aircraft", async (req, res): Promise<void> => {
   const list = await db.select().from(aircraftTable).orderBy(aircraftTable.type, aircraftTable.registration);
   const assigns = await db.select().from(aircraftAssignmentsTable).where(eq(aircraftAssignmentsTable.status, "assigned"));
   const busy = new Set(assigns.map(a => a.registration));
-  res.json({ aircraft: list.map(a => ({ registration: a.registration, type: a.type, status: a.status, note: a.note, assigned: busy.has(a.registration) })) });
+  res.json({ aircraft: list.map(a => ({ registration: a.registration, type: a.type, status: a.status, note: a.note, base: a.base, assigned: busy.has(a.registration) })) });
 });
 
 // ── Maintenance: pilot reports an aircraft issue ────────────────────────────

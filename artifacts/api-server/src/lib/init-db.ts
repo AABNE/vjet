@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import bcrypt from "bcryptjs";
+import { LIVERY_REGOS, HUB_RESERVES } from "../data/livery-regos";
 
 export async function initDb(): Promise<void> {
   const client = await pool.connect();
@@ -127,9 +128,11 @@ export async function initDb(): Promise<void> {
         "type"         TEXT NOT NULL,
         "status"       TEXT NOT NULL DEFAULT 'active',
         "note"         TEXT,
+        "base"         TEXT,
         "created_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         "updated_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE "aircraft" ADD COLUMN IF NOT EXISTS "base" TEXT;
 
       CREATE TABLE IF NOT EXISTS "aircraft_assignments" (
         "id"           SERIAL PRIMARY KEY,
@@ -344,6 +347,23 @@ export async function initDb(): Promise<void> {
       }
       logger.info({ count: seed.length }, "Seeded virtual fleet");
     }
+
+    // Always ensure the real livery registrations exist in the fleet (idempotent).
+    let liveryAdded = 0;
+    for (const [type, regos] of Object.entries(LIVERY_REGOS)) {
+      for (const reg of regos) {
+        const r = await client.query(
+          `INSERT INTO "aircraft" (registration, type) VALUES ($1, $2) ON CONFLICT (registration) DO NOTHING`,
+          [reg, type],
+        );
+        liveryAdded += r.rowCount ?? 0;
+      }
+    }
+    // Keep four reserve aircraft parked at the main hubs (one each).
+    for (const { registration, base } of HUB_RESERVES) {
+      await client.query(`UPDATE "aircraft" SET "base" = $2 WHERE registration = $1`, [registration, base]);
+    }
+    if (liveryAdded) logger.info({ liveryAdded }, "Added livery registrations to fleet");
 
     // Seed default admin if no users exist
     const { rows } = await client.query(`SELECT id FROM "users" LIMIT 1`);

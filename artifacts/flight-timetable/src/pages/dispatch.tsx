@@ -5,7 +5,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { dispatchChat } from "@/lib/puter";
 import { speak, stopSpeaking, voiceForUser } from "@/lib/voice";
 import {
-  Radio, Send, Phone, PhoneOff, Mic, DownloadCloud, CheckCircle2, ShieldAlert,
+  Radio, Send, Phone, PhoneOff, DownloadCloud, CheckCircle2, ShieldAlert,
   Plane, MapPin, Fuel, Cloud, Route as RouteIcon, Loader2, Volume2,
 } from "lucide-react";
 
@@ -93,6 +93,9 @@ export default function Dispatch() {
 
   const scroller = useRef<HTMLDivElement | null>(null);
   const [listening, setListening] = useState(false);
+  const [inCall, setInCall] = useState(false);
+  const inCallRef = useRef(false);
+  const turnRef = useRef(false);
   const [callNote, setCallNote] = useState("");
   const [voiceWarn, setVoiceWarn] = useState("");
   const recog = useRef<any>(null);
@@ -127,13 +130,13 @@ export default function Dispatch() {
   }, [messages, storeKey]);
 
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [messages, sending]);
-  useEffect(() => () => stopSpeaking(), []);
+  useEffect(() => () => { inCallRef.current = false; try { recog.current?.stop(); } catch { /* */ } stopSpeaking(); }, []);
 
-  async function say(reply: string) {
+  async function say(reply: string, waitEnd = false) {
     if (mode !== "call") return;
     setSpeaking(true);
     try {
-      const r = await speak(reply, voiceSeed);
+      const r = await speak(reply, voiceSeed, { waitEnd });
       if (r.voiceName) setVoiceLabel(r.voiceName);
       setVoiceWarn(r.ok ? "" : (r.reason || ""));
     } finally { setSpeaking(false); }
@@ -151,7 +154,7 @@ export default function Dispatch() {
       const payload = [{ role: "system" as const, content: system }, ...next.slice(-16)];
       const reply = await dispatchChat(payload);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
-      void say(reply);
+      await say(reply, inCallRef.current);
     } catch (e: any) {
       setMessages((m) => [...m, { role: "assistant", content: `(dispatch unreachable — ${e?.message || "try again"})` }]);
     } finally {
@@ -159,25 +162,44 @@ export default function Dispatch() {
     }
   }
 
-  function talk() {
-    if (!recogOk) { setCallNote("Voice input isn't available here — type below and I'll still reply out loud."); return; }
+  // Continuous call: start it, then just talk — it listens, you speak, dispatch
+  // replies out loud, and it listens again automatically, until you hang up.
+  function beginListen() {
+    if (!inCallRef.current || turnRef.current || !recogOk) return;
     try {
       const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const r = new SR();
-      r.lang = "en-AU"; r.interimResults = false; r.maxAlternatives = 1;
-      r.onresult = (e: any) => { const t = e.results[0][0].transcript; setCallNote(""); send(t); };
-      r.onerror = () => { setListening(false); setCallNote("Didn't catch that — try again or type."); };
-      r.onend = () => setListening(false);
+      r.lang = "en-AU"; r.interimResults = false; r.maxAlternatives = 1; r.continuous = false;
+      r.onresult = (e: any) => { const t = String(e.results[0][0].transcript || "").trim(); if (t) void handleUtterance(t); };
+      r.onerror = () => { /* ignore; onend will restart */ };
+      r.onend = () => { setListening(false); if (inCallRef.current && !turnRef.current) beginListen(); };
       recog.current = r;
       r.start();
       setListening(true);
-      setCallNote("Listening…");
+      setCallNote("");
     } catch {
       setCallNote("Couldn't start the mic — type instead.");
-      setListening(false);
     }
   }
-  function stopTalk() { try { recog.current?.stop(); } catch { /* */ } setListening(false); }
+  async function handleUtterance(t: string) {
+    turnRef.current = true;
+    try { recog.current?.stop(); } catch { /* */ }
+    setListening(false);
+    await send(t);           // awaits the reply + dispatch finishing speaking
+    turnRef.current = false;
+    if (inCallRef.current) beginListen();
+  }
+  function startCall() {
+    if (!recogOk) { setCallNote("Calls need Chrome's microphone support — type below instead."); return; }
+    inCallRef.current = true; setInCall(true); setCallNote("Connected — go ahead.");
+    beginListen();
+  }
+  function hangUp() {
+    inCallRef.current = false; turnRef.current = false;
+    setInCall(false); setListening(false); setCallNote("");
+    try { recog.current?.stop(); } catch { /* */ }
+    stopSpeaking(); setSpeaking(false);
+  }
 
   async function act(path: string, okMsg: string) {
     if (!entry) return;
@@ -251,7 +273,7 @@ export default function Dispatch() {
               <button onClick={testVoice} disabled={speaking} title="Play a test line in the dispatcher voice" className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80 disabled:opacity-40"><Volume2 className="h-3 w-3" />Test voice</button>
               <button onClick={clearChat} title="New shift (clears memory)" className="font-mono text-[9px] uppercase tracking-wider text-white/40 transition hover:text-white/80">New shift</button>
               <div className="flex items-center gap-1 rounded-full bg-white/10 p-0.5">
-                <button onClick={() => { stopSpeaking(); setMode("text"); }} className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "text" ? "bg-white text-[#1a1a1a]" : "text-white/70"}`}>Text</button>
+                <button onClick={() => { hangUp(); setMode("text"); }} className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "text" ? "bg-white text-[#1a1a1a]" : "text-white/70"}`}>Text</button>
                 <button onClick={() => setMode("call")} className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition ${mode === "call" ? "bg-[#fb5713] text-white" : "text-white/70"}`}><Phone className="h-3 w-3" />Call</button>
               </div>
             </div>
@@ -271,15 +293,22 @@ export default function Dispatch() {
 
           {mode === "call" ? (
             <div className="flex flex-col items-center gap-2 border-t border-[#f3f4f6] bg-white px-4 py-4">
-              <button
-                onMouseDown={talk} onMouseUp={stopTalk} onTouchStart={talk} onTouchEnd={stopTalk}
-                disabled={sending}
-                className={`flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg transition disabled:opacity-50 ${listening ? "scale-110 bg-red-500" : "bg-[#fb5713] hover:bg-[#e04d0e]"}`}
-                data-testid="button-push-to-talk">
-                {listening ? <PhoneOff className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
-              </button>
-              <div className="text-center text-[11px] text-[#9ca3af]">
-                {callNote || (recogOk ? "Hold to talk — release to send. Dispatch replies out loud." : "Hold-to-talk needs Chrome mic support; type below instead.")}
+              {!inCall ? (
+                <button onClick={startCall}
+                  className="flex h-16 items-center gap-2 rounded-full bg-[#fb5713] px-7 text-sm font-bold uppercase tracking-wider text-white shadow-lg transition hover:bg-[#e04d0e]"
+                  data-testid="button-call-dispatch">
+                  <Phone className="h-6 w-6" />Call dispatch
+                </button>
+              ) : (
+                <button onClick={hangUp}
+                  className="flex h-16 items-center gap-2 rounded-full bg-red-500 px-7 text-sm font-bold uppercase tracking-wider text-white shadow-lg transition hover:bg-red-600"
+                  data-testid="button-hang-up">
+                  <PhoneOff className="h-6 w-6" />Hang up
+                </button>
+              )}
+              <div className="flex items-center gap-2 text-center text-[11px] text-[#9ca3af]">
+                {inCall && (listening || speaking) && <span className="relative flex h-2 w-2"><span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${speaking ? "animate-ping bg-[#fb5713]" : "animate-ping bg-green-400"}`} /><span className={`relative inline-flex h-2 w-2 rounded-full ${speaking ? "bg-[#fb5713]" : "bg-green-500"}`} /></span>}
+                {inCall ? (speaking ? "Dispatch is speaking…" : listening ? "Listening — just talk." : "On call…") : (callNote || (recogOk ? "Start a call, then just talk — hang up when you're done." : "Calls need Chrome mic support; type below instead."))}
               </div>
               <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="flex w-full items-center gap-2">
                 <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="…or type to dispatch"

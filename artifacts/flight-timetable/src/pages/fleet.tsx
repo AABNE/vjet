@@ -4,7 +4,7 @@ import { useAuth } from "@/components/auth-provider";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Plane, Loader2, Plus } from "lucide-react";
 
-interface Ac { registration: string; type: string; status: string; note: string | null; assigned: boolean }
+interface Ac { registration: string; type: string; status: string; note: string | null; base: string | null; assigned: boolean }
 const TYPES = ["A320", "A20N", "A21N", "B788"];
 const STATUS_STYLE: Record<string, string> = { active: "bg-emerald-50 text-emerald-700", maintenance_hold: "bg-red-100 text-red-700", grounded: "bg-[#f3f4f6] text-[#6b7280]" };
 
@@ -133,6 +133,7 @@ export default function Fleet() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-bold text-[#1a1a1a]">{a.registration}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${STATUS_STYLE[a.status] ?? "bg-[#f3f4f6] text-[#6b7280]"}`}>{a.status.replace(/_/g, " ")}</span>
+                      {a.base && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-indigo-700">Reserve · {a.base}</span>}
                       {a.assigned && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-sky-700">In use</span>}
                       {a.note && <span className="text-[11px] text-[#9ca3af]">{a.note}</span>}
                     </div>

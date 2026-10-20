@@ -47,7 +47,7 @@ function browserSpeak(text: string): void {
 export interface SpeakResult { ok: boolean; reason?: string; voiceName?: string }
 
 // seed = a per-pilot string (username) so each person gets a distinct, stable voice.
-export async function speak(text: string, seed: string): Promise<SpeakResult> {
+export async function speak(text: string, seed: string, opts?: { waitEnd?: boolean }): Promise<SpeakResult> {
   stopSpeaking();
   try {
     const res = await fetch("/api/dispatch/tts", {
@@ -70,6 +70,12 @@ export async function speak(text: string, seed: string): Promise<SpeakResult> {
       } catch {
         // Browser blocked autoplay — surface it so the pilot taps to enable.
         return { ok: false, reason: "Tap Test voice to enable audio (browser blocked autoplay).", voiceName };
+      }
+      if (opts?.waitEnd) {
+        await new Promise<void>((resolve) => {
+          audio.addEventListener("ended", () => resolve(), { once: true });
+          audio.addEventListener("error", () => resolve(), { once: true });
+        });
       }
       return { ok: true, voiceName };
     }

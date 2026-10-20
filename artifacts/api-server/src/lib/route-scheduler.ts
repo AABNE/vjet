@@ -200,10 +200,11 @@ async function tick(): Promise<void> {
   const now = new Date();
 
   // Live fleet: only ACTIVE aircraft are available for rotations, so an aircraft
-  // on a maintenance hold / grounded automatically gets no flights.
+  // on a maintenance hold / grounded automatically gets no flights. Reserve
+  // aircraft (those with a home base set) are kept idle at their hub.
   const fleetRows = await db.select().from(aircraftTable).where(eq(aircraftTable.status, "active"));
   const fleet: Record<string, string[]> = {};
-  for (const a of fleetRows) (fleet[a.type] ??= []).push(a.registration);
+  for (const a of fleetRows) { if (a.base) continue; (fleet[a.type] ??= []).push(a.registration); }
   const fleetByType = Object.keys(fleet).length ? fleet : DEFAULT_FLEET;
 
   // Build the desired set of flights for the planning window.

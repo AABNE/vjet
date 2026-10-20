@@ -12,6 +12,9 @@ export const aircraftTable = pgTable("aircraft", {
   // "active" | "maintenance_hold" | "grounded"
   status: text("status").notNull().default("active"),
   note: text("note"),
+  // Home base (ICAO/IATA) for a reserve aircraft kept idle at a hub. When set,
+  // the aircraft is held out of the daily rotation and parked at this airport.
+  base: text("base"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

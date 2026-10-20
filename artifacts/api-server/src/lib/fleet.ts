@@ -68,7 +68,7 @@ export async function findReplacementAtAirport(
     // Where is it at departMs? Last flight that landed (with turnaround) before then.
     let pos: string | null = null;
     for (const t of timeline) { if (t.end + TURN_MS <= departMs) pos = t.to; }
-    if (pos === null && timeline.length) pos = timeline[0].from; // starts its day here
+    if (pos === null) pos = timeline.length ? timeline[0].from : ac.base; // starts its day here, or parked at its base
     if (pos === airport) return ac.registration;
   }
   return null;
