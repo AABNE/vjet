@@ -12,6 +12,7 @@ import { logger } from "./logger";
 import { collectTracking, type TrackedFlight } from "./tracking";
 import { runAgentTask, logEvent, isPaused, aiSummarize } from "./ops-core";
 import { notify } from "./ops";
+import { refreshAirports, getWeather, isAdverse } from "./weather";
 
 const TICK_MS = 2 * 60_000;
 
@@ -129,11 +130,38 @@ async function fleetTick(): Promise<void> {
   });
 }
 
+// ── Weather watch ────────────────────────────────────────────────────────────
+const lastWeatherAlert = new Map<string, number>(); // icao → last alert ms
+const WEATHER_ALERT_GAP = 2 * 60 * 60_000;
+async function weatherTick(): Promise<void> {
+  if (await isPaused("flight-monitor")) return;
+  const tracks = await collectTracking();
+  if (tracks.length === 0) return;
+  const codes = [...new Set(tracks.flatMap((t) => [t.departure, t.arrival]))];
+  await refreshAirports(codes);
+  for (const code of codes) {
+    const w = await getWeather(code);
+    if (!w) continue;
+    const { adverse, reasons } = isAdverse(w);
+    if (!adverse) continue;
+    const last = lastWeatherAlert.get(w.icao) ?? 0;
+    if (Date.now() - last < WEATHER_ALERT_GAP) continue;
+    lastWeatherAlert.set(w.icao, Date.now());
+    await logEvent({
+      kind: "report_created", severity: "warn", agentKey: "flight-monitor",
+      title: `Adverse weather — ${w.iata ?? w.icao}`,
+      body: `${reasons.join(", ")}. ${w.metarRaw ?? ""}`.slice(0, 280),
+      refType: "aircraft", refId: w.icao,
+    });
+  }
+}
+
 async function tick(): Promise<void> {
   if (await isPaused("global")) return;
   await flightMonitorTick();
   await dispatchTick();
   await fleetTick();
+  await weatherTick();
 }
 
 export function startOpsMonitor(): void {

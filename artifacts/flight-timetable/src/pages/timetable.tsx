@@ -1,9 +1,25 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { getGetTimetableQueryKey, useGetTimetable, useStartFlight, useFinishFlight, useRemoveFromTimetable } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
 import { useSimLink } from "@/hooks/useSimLink";
-import { AlertTriangle, ArrowRight, Clock3, ExternalLink, Plane, Radio, RotateCw } from "lucide-react";
+import { apiGet } from "@/lib/api";
+import { AlertTriangle, ArrowRight, Clock3, ExternalLink, Plane, Radio, RotateCw, Wind } from "lucide-react";
 import { Link } from "wouter";
+
+interface WeatherView { icao: string; iata: string | null; freshness: string; metarRaw: string | null; parsed: { windDir: string | null; windKt: number | null; gustKt: number | null; visibility: string | null; qnh: string | null; wx: string | null } }
+const WX_DOT: Record<string, string> = { current: "bg-emerald-500", stale: "bg-amber-500", unavailable: "bg-[#d1d5db]" };
+
+function WxChip({ code, wx }: { code: string; wx?: WeatherView }) {
+  if (!wx) return <span className="font-mono text-[10px] text-[#c7ccd4]">{code} —</span>;
+  const p = wx.parsed;
+  const summary = wx.freshness === "unavailable" ? "no data"
+    : [p.windDir && p.windKt != null ? `${p.windDir}/${p.windKt}${p.gustKt ? `G${p.gustKt}` : ""}kt` : null, p.visibility, p.qnh].filter(Boolean).join(" · ") || "—";
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#6b7280]" title={wx.metarRaw || ""}>
+      <span className={`h-1.5 w-1.5 rounded-full ${WX_DOT[wx.freshness] ?? "bg-[#d1d5db]"}`} />{code} {summary}{wx.freshness === "stale" ? " (stale)" : ""}
+    </span>
+  );
+}
 
 function JetstarStar({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
@@ -78,6 +94,18 @@ export default function Timetable() {
   const completed = entries.filter(e => e.status.toLowerCase() === "completed");
   const flagged = entries.filter(e => e.status.toLowerCase() === "flagged");
   const err = q.error as any;
+
+  // Assigned registrations + weather for this pilot's open sectors.
+  const openCodes = [...new Set(upcoming.flatMap(e => [e.flight.departure, e.flight.arrival]))];
+  const asg = useQuery<{ assignments: Record<number, { registration: string; type: string } | null> }>({
+    queryKey: ["asg-mine"], queryFn: () => apiGet("/api/ops/assignments/mine"), retry: false, refetchOnMount: "always",
+  });
+  const wx = useQuery<{ reports: Record<string, WeatherView> }>({
+    queryKey: ["wx", openCodes.join(",")], queryFn: () => apiGet(`/api/ops/weather?codes=${openCodes.join(",")}`),
+    enabled: openCodes.length > 0, retry: false, refetchInterval: 15 * 60_000,
+  });
+  const regFor = (id: number) => asg.data?.assignments?.[id]?.registration ?? null;
+  const wxFor = (code: string) => wx.data?.reports?.[code.toUpperCase()];
 
   // ── Auto flight timer status (desktop app only) ──
   // The firing logic lives in the app-wide <AutoFlightTimer>: when the Sim Link
@@ -200,10 +228,17 @@ export default function Timetable() {
                     </div>
                   </div>
 
+                  {/* Weather for departure + arrival */}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[#f3f4f6] pt-3">
+                    <Wind className="h-3.5 w-3.5 text-[#9ca3af]" />
+                    <WxChip code={entry.flight.departure} wx={wxFor(entry.flight.departure)} />
+                    <WxChip code={entry.flight.arrival} wx={wxFor(entry.flight.arrival)} />
+                  </div>
+
                   {/* Footer actions */}
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f3f4f6] pt-4">
                     <div className="font-mono text-[10px] uppercase tracking-wider text-[#9ca3af]">
-                      {entry.flight.aircraft}
+                      {entry.flight.aircraft} · {regFor(entry.id) ?? "TBA"}
                       {entry.status.toLowerCase() === "active" && entry.startedAt && (
                         <> · <Clock3 className="mr-0.5 inline h-3 w-3" />Started {fmt(entry.startedAt)}</>
                       )}

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import {
   db, eq, and, desc, inArray, sql,
-  usersTable, flightsTable,
+  usersTable, flightsTable, timetableTable,
   aircraftTable, aircraftAssignmentsTable, delayReportsTable,
   maintenanceReportsTable,
   operationalEventsTable, agentTaskRunsTable, approvalsTable, agentStateTable,
@@ -13,6 +13,7 @@ import {
 import { collectTracking } from "../lib/tracking";
 import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot } from "../lib/fleet";
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
+import { getMany } from "../lib/weather";
 
 const router: IRouter = Router();
 
@@ -80,6 +81,72 @@ router.get("/ops/overview", async (req, res): Promise<void> => {
 router.get("/ops/tracking", async (req, res): Promise<void> => {
   if (!(await requireUser(req, res))) return;
   res.json({ tracks: await collectTracking() });
+});
+
+// ── Aviation weather ────────────────────────────────────────────────────────
+router.get("/ops/weather", async (req, res): Promise<void> => {
+  if (!(await requireUser(req, res))) return;
+  const codes = String(req.query.codes || "").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean).slice(0, 20);
+  if (codes.length === 0) { res.json({ reports: {} }); return; }
+  res.json({ reports: await getMany(codes) });
+});
+
+// ── Aircraft registration assigned to the pilot's own sectors ───────────────
+// Lazily auto-assigns an available aircraft of the right type (respecting holds
+// and double-booking) so the timetable can show a real registration.
+router.get("/ops/assignments/mine", async (req, res): Promise<void> => {
+  const u = await requireUser(req, res); if (!u) return;
+  const entries = await db.select().from(timetableTable)
+    .where(and(eq(timetableTable.userId, u.id), inArray(timetableTable.status, ["pending", "active"])));
+  const map: Record<number, { registration: string; type: string } | null> = {};
+  for (const e of entries) {
+    const [a] = await db.select().from(aircraftAssignmentsTable)
+      .where(and(eq(aircraftAssignmentsTable.timetableId, e.id), eq(aircraftAssignmentsTable.status, "assigned")));
+    let reg = a?.registration ?? null;
+    if (!reg) {
+      const [f] = await db.select().from(flightsTable).where(eq(flightsTable.id, e.flightId));
+      if (f) {
+        const picked = await findReplacement(f.aircraft);
+        if (picked) {
+          const r = await assignAircraft({ timetableId: e.id, flightId: e.flightId, registration: picked, by: "agent:fleet-manager", reason: "auto-assigned at pickup" });
+          if (r.ok) reg = picked;
+        }
+      }
+    }
+    if (reg) {
+      const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
+      map[e.id] = { registration: reg, type: ac?.type ?? "" };
+    } else map[e.id] = null;
+  }
+  res.json({ assignments: map });
+});
+
+// ── Fleet admin: add / edit aircraft, assign to a sector ────────────────────
+router.post("/ops/aircraft", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const registration = String(req.body?.registration || "").trim().toUpperCase();
+  const type = String(req.body?.type || "").trim().toUpperCase();
+  if (!/^[A-Z0-9-]{3,10}$/.test(registration)) { res.status(400).json({ error: "Enter a valid registration." }); return; }
+  if (!["A320", "A20N", "A21N", "B788"].includes(type)) { res.status(400).json({ error: "Pick a valid fleet type." }); return; }
+  const [existing] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, registration));
+  if (existing) { res.status(409).json({ error: "That registration already exists." }); return; }
+  await db.insert(aircraftTable).values({ registration, type, note: req.body?.note ?? null });
+  await logEvent({ kind: "audit", actor: `user:${u.id}`, title: `Aircraft added — ${registration} (${type})`, refType: "aircraft", refId: registration });
+  res.status(201).json({ ok: true });
+});
+
+router.patch("/ops/aircraft/:reg", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const reg = String(req.params.reg).toUpperCase();
+  const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
+  if (!ac) { res.status(404).json({ error: "Aircraft not found" }); return; }
+  const patch: any = { updatedAt: new Date() };
+  if (["A320", "A20N", "A21N", "B788"].includes(req.body?.type)) patch.type = req.body.type;
+  if (["active", "maintenance_hold", "grounded"].includes(req.body?.status)) patch.status = req.body.status;
+  if (typeof req.body?.note === "string") patch.note = req.body.note || null;
+  await db.update(aircraftTable).set(patch).where(eq(aircraftTable.registration, reg));
+  await logEvent({ kind: "audit", actor: `user:${u.id}`, title: `Aircraft updated — ${reg}`, refType: "aircraft", refId: reg });
+  res.json({ ok: true });
 });
 
 // ── AI Control Room ─────────────────────────────────────────────────────────

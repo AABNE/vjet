@@ -275,6 +275,19 @@ export async function initDb(): Promise<void> {
         "created_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS "IDX_aiusage_agent" ON "ai_usage" ("agent_key");
+
+      CREATE TABLE IF NOT EXISTS "weather_reports" (
+        "icao"          TEXT PRIMARY KEY,
+        "iata"          TEXT,
+        "name"          TEXT,
+        "metar_raw"     TEXT,
+        "metar_json"    TEXT,
+        "taf_raw"       TEXT,
+        "observed_at"   TIMESTAMPTZ,
+        "taf_issued_at" TIMESTAMPTZ,
+        "fetched_at"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "ok"            BOOLEAN NOT NULL DEFAULT TRUE
+      );
     `);
 
     // Seed a small virtual fleet (real Jetstar registrations) if empty.

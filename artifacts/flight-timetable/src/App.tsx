@@ -25,6 +25,7 @@ import OpsDashboard from "@/pages/ops-dashboard";
 import ControlRoom from "@/pages/control-room";
 import MaintenanceOps from "@/pages/maintenance-ops";
 import AiModels from "@/pages/ai-models";
+import Fleet from "@/pages/fleet";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -329,6 +330,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                 { href: "/ops", label: "Ops dashboard", icon: Gauge },
                 { href: "/control-room", label: "AI Control Room", icon: Bot },
                 { href: "/maintenance-ops", label: "Maintenance", icon: Wrench },
+                { href: "/fleet", label: "Fleet", icon: Plane },
                 { href: "/admin", label: "Administration", icon: ShieldCheck },
               ].map(({ href, label, icon: Icon }) => (
                 <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`}
@@ -385,6 +387,7 @@ function Router() {
         <Route path="/control-room" component={ControlRoom} />
         <Route path="/maintenance-ops" component={MaintenanceOps} />
         <Route path="/ai-models" component={AiModels} />
+        <Route path="/fleet" component={Fleet} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>
