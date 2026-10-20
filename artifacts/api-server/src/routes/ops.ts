@@ -151,33 +151,42 @@ router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
   const location = String(req.body?.location || "").trim().toUpperCase();
   const icao = location ? toIcao(location) : null;
   const outstation = !!icao && !MAINT_BASES.includes(icao);
+  // maintenance !== false → run the maintenance engine (repair + auto-return).
+  // When false, just park the aircraft; it stays grounded until Return to service.
+  const withMaintenance = req.body?.maintenance !== false;
 
   await db.update(aircraftTable).set({ status: "grounded", note: reason, updatedAt: new Date() }).where(eq(aircraftTable.registration, reg));
-  const [rep] = await db.insert(maintenanceReportsTable).values({
-    registration: reg, reportedByUserId: u.id, category: "other",
-    description: `${location ? `At ${location}: ` : ""}${reason}`,
-    status: "maintenance_hold", priority: "high", requestRestriction: true, holdActive: true,
-  }).returning();
 
-  // Pre-create the repair job (so the engine completes + returns it to service).
-  const repairMinutes = 300; // generic ground
-  const ferryOut = outstation ? 60 + 90 : 0; // prep + flight up
-  const ferryBack = outstation ? 90 : 0;      // crew ferried back to SYD
-  const etaAt = new Date(Date.now() + (ferryOut + repairMinutes + ferryBack) * MAINT_MINUTE_MS);
-  await db.insert(maintenanceJobsTable).values({
-    registration: reg, reportId: rep.id, category: "other", repairMinutes,
-    phase: "in_repair", etaAt, location: icao ?? (location || null),
-    note: outstation ? `Maintenance personnel ferried to ${location}; crew return to SYD after the fix.` : "At base.",
-  });
+  let etaAt: Date | null = null;
+  if (withMaintenance) {
+    const [rep] = await db.insert(maintenanceReportsTable).values({
+      registration: reg, reportedByUserId: u.id, category: "other",
+      description: `${location ? `At ${location}: ` : ""}${reason}`,
+      status: "maintenance_hold", priority: "high", requestRestriction: true, holdActive: true,
+    }).returning();
+
+    // Pre-create the repair job (so the engine completes + returns it to service).
+    const repairMinutes = 300; // generic ground
+    const ferryOut = outstation ? 60 + 90 : 0; // prep + flight up
+    const ferryBack = outstation ? 90 : 0;      // crew ferried back to SYD
+    etaAt = new Date(Date.now() + (ferryOut + repairMinutes + ferryBack) * MAINT_MINUTE_MS);
+    await db.insert(maintenanceJobsTable).values({
+      registration: reg, reportId: rep.id, category: "other", repairMinutes,
+      phase: "in_repair", etaAt, location: icao ?? (location || null),
+      note: outstation ? `Maintenance personnel ferried to ${location}; crew return to SYD after the fix.` : "At base.",
+    });
+  }
 
   await logEvent({ kind: "aircraft_hold", severity: "critical", actor: `user:${u.id}`, agentKey: "maintenance",
-    title: `${reg} grounded${location ? ` at ${location}` : ""}`,
-    body: outstation ? `${reason}. Ferrying maintenance up; ~${Math.round((ferryOut + repairMinutes + ferryBack) / 60)}h to return to service.` : reason,
+    title: `${reg} grounded${location ? ` at ${location}` : ""}${withMaintenance ? "" : " (no maintenance)"}`,
+    body: withMaintenance
+      ? (outstation ? `${reason}. Ferrying maintenance up; ~${Math.round((((outstation ? 150 : 0) + 300 + (outstation ? 90 : 0)) / 60))}h to return to service.` : reason)
+      : `${reason}. Parked — no maintenance; stays grounded until returned to service.`,
     refType: "aircraft", refId: reg });
 
   // Move its remaining booked flights to a spare, or cancel them.
   const moved = await reassignOrCancel(reg, `${reg} grounded: ${reason}`);
-  res.json({ ok: true, etaAt: etaAt.toISOString(), outstation, ...moved });
+  res.json({ ok: true, etaAt: etaAt ? etaAt.toISOString() : null, outstation, maintenance: withMaintenance, ...moved });
 });
 
 // Today's rotations, grouped by aircraft — the daily tail roster ops built.

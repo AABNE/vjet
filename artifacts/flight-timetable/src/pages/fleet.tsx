@@ -37,11 +37,13 @@ export default function Fleet() {
     await apiPost(`/api/ops/aircraft/${registration}`, { status: "active" }).catch(() => {});
     await q.refetch(); qc.invalidateQueries({ queryKey: ["ops-overview"] });
   }
-  async function ground(registration: string) {
-    const reason = prompt("Why is it being grounded? (e.g. landing gear lever inop)");
+  async function ground(registration: string, maintenance: boolean) {
+    const reason = prompt(maintenance
+      ? "Why is it being grounded? (e.g. landing gear lever inop) — maintenance will fix it and return it to service."
+      : "Why is it being parked? It will NOT go to maintenance and stays grounded until you return it to service.");
     if (reason === null) return;
-    const location = prompt("Which airport is it at? (IATA/ICAO, blank if at a main base)") || "";
-    await apiPost(`/api/ops/aircraft/${registration}/ground`, { reason: reason || "Technical difficulties", location }).catch(() => {});
+    const location = maintenance ? (prompt("Which airport is it at? (IATA/ICAO, blank if at a main base)") || "") : "";
+    await apiPost(`/api/ops/aircraft/${registration}/ground`, { reason: reason || (maintenance ? "Technical difficulties" : "Parked"), location, maintenance }).catch(() => {});
     await q.refetch(); await maint.refetch(); qc.invalidateQueries({ queryKey: ["ops-overview"] });
   }
 
@@ -131,7 +133,10 @@ export default function Fleet() {
                     </div>
                     <div className="flex gap-1.5">
                       {a.status !== "active" && <button onClick={() => returnToService(a.registration)} className="rounded-lg border border-emerald-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 hover:bg-emerald-50">Return to service</button>}
-                      {a.status === "active" && <button onClick={() => ground(a.registration)} className="rounded-lg border border-[#e5e7eb] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6]">Ground</button>}
+                      {a.status === "active" && <>
+                        <button onClick={() => ground(a.registration, true)} title="Ground and send to maintenance (auto-repairs and returns to service)" className="rounded-lg border border-[#e5e7eb] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6]">Ground</button>
+                        <button onClick={() => ground(a.registration, false)} title="Ground without maintenance — stays grounded until you return it to service" className="rounded-lg border border-[#e5e7eb] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6]">Ground · no maint</button>
+                      </>}
                     </div>
                   </div>
                 ))}

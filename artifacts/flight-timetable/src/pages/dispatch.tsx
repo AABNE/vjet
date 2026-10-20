@@ -266,7 +266,7 @@ export default function Dispatch() {
                 </div>
               </div>
             ))}
-            {sending && <div className="flex justify-start"><div className="flex items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white px-3.5 py-2 text-sm text-[#9ca3af]"><Loader2 className="h-3.5 w-3.5 animate-spin" />Dispatch is on it…</div></div>}
+            {sending && <div className="flex justify-start vj-fade"><div className="flex items-center gap-2 rounded-2xl border border-[#e5e7eb] bg-white px-3.5 py-2 text-sm text-[#9ca3af]"><span className="vj-typing text-[#fb5713]"><i /><i /><i /></span>Dispatch is on it…</div></div>}
           </div>
 
           {mode === "call" ? (
