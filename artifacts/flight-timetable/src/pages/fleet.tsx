@@ -15,6 +15,9 @@ export default function Fleet() {
   const maint = useQuery<{ jobs: { id: number; registration: string; category: string; part: string | null; phase: string; etaAt: string | null; location: string | null; note: string | null }[]; parts: { part: string; qty: number }[] }>({
     queryKey: ["maint-state"], queryFn: () => apiGet("/api/ops/maintenance/state"), refetchInterval: 20_000, retry: false,
   });
+  const rot = useQuery<{ rotations: { registration: string; type: string; legs: { time: string; dep: string; arr: string; flightNumber: string }[] }[] }>({
+    queryKey: ["rotations"], queryFn: () => apiGet("/api/ops/rotations"), refetchInterval: 30_000, retry: false,
+  });
   const [reg, setReg] = useState("");
   const [type, setType] = useState("A320");
   const [busy, setBusy] = useState(false);
@@ -63,6 +66,30 @@ export default function Fleet() {
         <button onClick={add} disabled={busy || !reg} className="flex h-10 items-center gap-2 rounded-xl bg-[#fb5713] px-4 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Add</button>
         {msg && <span className="text-xs text-red-600">{msg}</span>}
       </div>
+
+      {(rot.data?.rotations.length ?? 0) > 0 && (
+        <div className="mb-6 rounded-2xl border border-[#e5e7eb] bg-white p-4">
+          <h2 className="mb-3 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><Plane className="h-3.5 w-3.5 text-[#fb5713]" />Today's rotations <span className="text-[#c7ccd4]">· ops-assigned</span></h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {rot.data!.rotations.map((r) => (
+              <div key={r.registration} className="rounded-xl border border-[#f3f4f6] bg-[#f9fafb] p-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="font-mono text-sm font-bold text-[#1a1a1a]">{r.registration}</span>
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{r.type} · {r.legs.length} leg{r.legs.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="space-y-0.5">
+                  {r.legs.map((l, i) => (
+                    <div key={i} className="flex items-center gap-2 font-mono text-xs text-[#374151]">
+                      <span className="text-[#9ca3af]">{l.time}</span>
+                      <span className="font-semibold">{l.dep}-{l.arr}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(jobs.length > 0 || parts.length > 0) && (
         <div className="mb-6 grid gap-4 md:grid-cols-2">

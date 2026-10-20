@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import {
-  db, eq, and, desc, inArray, sql,
+  db, eq, and, desc, asc, inArray, sql,
   usersTable, flightsTable, timetableTable,
   aircraftTable, aircraftAssignmentsTable, delayReportsTable,
   maintenanceReportsTable, maintenanceJobsTable, partsInventoryTable,
@@ -166,6 +166,27 @@ router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
     body: outstation ? `${reason}. Ferrying maintenance up; ~${Math.round((ferryOut + repairMinutes + ferryBack) / 60)}h to return to service.` : reason,
     refType: "aircraft", refId: reg });
   res.json({ ok: true, etaAt: etaAt.toISOString(), outstation });
+});
+
+// Today's rotations, grouped by aircraft — the daily tail roster ops built.
+router.get("/ops/rotations", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const now = Date.now();
+  const horizon = now + 30 * 60 * 60_000; // next ~30h
+  const rows = await db.select().from(flightsTable).orderBy(asc(flightsTable.departsAt));
+  const byReg = new Map<string, { registration: string; type: string; legs: { time: string; dep: string; arr: string; flightNumber: string; departsAt: string | null }[] }>();
+  for (const f of rows) {
+    if (!f.registration || !f.departsAt) continue;
+    const ms = new Date(f.departsAt).getTime();
+    if (ms < now - 60 * 60_000 || ms > horizon) continue; // today-ish window
+    const g = byReg.get(f.registration) ?? { registration: f.registration, type: f.aircraft, legs: [] };
+    g.legs.push({ time: f.departureTime, dep: f.departure, arr: f.arrival, flightNumber: f.flightNumber, departsAt: f.departsAt ? new Date(f.departsAt).toISOString() : null });
+    byReg.set(f.registration, g);
+  }
+  const rotations = [...byReg.values()]
+    .map((r) => ({ ...r, legs: r.legs.sort((a, b) => (a.departsAt ?? "").localeCompare(b.departsAt ?? "")) }))
+    .sort((a, b) => a.registration.localeCompare(b.registration));
+  res.json({ rotations });
 });
 
 // Maintenance engine state (jobs + parts) for the dashboards.
