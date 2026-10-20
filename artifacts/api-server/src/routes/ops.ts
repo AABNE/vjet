@@ -15,6 +15,7 @@ import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegist
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 import { getMany, toIcao } from "../lib/weather";
 import { applyApproval } from "../lib/approvals";
+import { MAINT_MINUTE_MS } from "../lib/maintenance";
 
 const router: IRouter = Router();
 
@@ -153,7 +154,7 @@ router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
   const repairMinutes = 300; // generic ground
   const ferryOut = outstation ? 60 + 90 : 0; // prep + flight up
   const ferryBack = outstation ? 90 : 0;      // crew ferried back to SYD
-  const etaAt = new Date(Date.now() + (ferryOut + repairMinutes + ferryBack) * 60_000);
+  const etaAt = new Date(Date.now() + (ferryOut + repairMinutes + ferryBack) * MAINT_MINUTE_MS);
   await db.insert(maintenanceJobsTable).values({
     registration: reg, reportId: rep.id, category: "other", repairMinutes,
     phase: "in_repair", etaAt, location: icao ?? (location || null),

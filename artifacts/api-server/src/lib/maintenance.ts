@@ -26,6 +26,13 @@ const REPAIR_BASE: Record<string, { minutes: number; part: string | null }> = {
 const BUFFER_MIN = 180; // + 3h
 const MAINT_BASES = ["YSSY", "YBBN", "YPPH", "YMML"];
 
+// Sim time compression. Repair/ferry durations are quoted in "minutes" that are
+// realistic in proportion, but we play them out fast so the whole cycle (ground
+// → repair → return to service) is watchable and survives a free-tier window.
+// Default: 1 sim-minute = 1 real second (60×). Set MAINT_MINUTE_MS=60000 for
+// true real-time.
+export const MAINT_MINUTE_MS = Number(process.env.MAINT_MINUTE_MS) || 1000;
+
 // Map a free-text category/description to a repair profile + keyword flags.
 function classify(category: string, description: string): { key: string; profile: { minutes: number; part: string | null }; unfit: boolean; returned: boolean } {
   const s = `${category} ${description}`.toLowerCase();
@@ -93,14 +100,14 @@ export async function maintenanceTick(): Promise<void> {
       }
 
       // Source the part.
-      let phase = "in_repair", eta = now + repairMinutes * 60_000, orderedSpares = 0, note = "";
+      let phase = "in_repair", eta = now + repairMinutes * MAINT_MINUTE_MS, orderedSpares = 0, note = "";
       if (profile.part) {
         const have = await stock(profile.part);
         if (have > 0) {
           await addStock(profile.part, -1);
         } else {
           const delivery = ferryDeliveryMinutes(acType);
-          phase = "awaiting_part"; eta = now + (delivery + repairMinutes) * 60_000; orderedSpares = 2; // order 3, use 1, 2 spare
+          phase = "awaiting_part"; eta = now + (delivery + repairMinutes) * MAINT_MINUTE_MS; orderedSpares = 2; // order 3, use 1, 2 spare
           note = `ordered 3× ${profile.part}; factory ferry ~${Math.round(delivery / 60)}h, then ${Math.round(repairMinutes / 60)}h repair`;
           ordered++;
           await logEvent({ kind: "report_created", severity: "warn", agentKey: "maintenance", title: `Part on order — ${rep.registration}`, body: `${profile.part} out of stock. Ordered 3; ETA ~${Math.round((delivery + repairMinutes) / 60)}h.`, refType: "maintenance_report", refId: rep.id, taskRunId });
@@ -116,11 +123,11 @@ export async function maintenanceTick(): Promise<void> {
     for (const j of deferredJobs) {
       const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, j.registration));
       if (ac?.status !== "grounded" && await hasOpenSectors(j.registration)) continue;
-      let phase = "in_repair", eta = now + j.repairMinutes * 60_000, orderedSpares = 0;
+      let phase = "in_repair", eta = now + j.repairMinutes * MAINT_MINUTE_MS, orderedSpares = 0;
       if (j.part) {
         const have = await stock(j.part);
         if (have > 0) await addStock(j.part, -1);
-        else { const delivery = ferryDeliveryMinutes(ac?.type ?? "A320"); phase = "awaiting_part"; eta = now + (delivery + j.repairMinutes) * 60_000; orderedSpares = 2; ordered++; }
+        else { const delivery = ferryDeliveryMinutes(ac?.type ?? "A320"); phase = "awaiting_part"; eta = now + (delivery + j.repairMinutes) * MAINT_MINUTE_MS; orderedSpares = 2; ordered++; }
       }
       await db.update(maintenanceJobsTable).set({ phase, etaAt: new Date(eta), orderedSpares, updatedAt: new Date() }).where(eq(maintenanceJobsTable.id, j.id));
     }

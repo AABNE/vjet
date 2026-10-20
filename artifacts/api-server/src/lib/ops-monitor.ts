@@ -164,15 +164,29 @@ async function tick(): Promise<void> {
   await dispatchTick();
   await fleetTick();
   await weatherTick();
-  await maintenanceTick();
   // Operations Manager clears the approval queue autonomously — the human never
   // needs to action it.
   if (!(await isPaused("ops-manager"))) await opsManagerReview();
+}
+
+// Maintenance runs on its own, faster cadence so grounded aircraft are worked
+// and returned to service promptly (the compressed repair clock resolves in
+// minutes). Kept separate from the main tick so the two never run it at once.
+const MAINT_TICK_MS = 30_000;
+let maintBusy = false;
+async function maintLoop(): Promise<void> {
+  if (maintBusy) return;
+  maintBusy = true;
+  try { await maintenanceTick(); }
+  catch (err) { logger.error({ err }, "maintenance tick failed"); }
+  finally { maintBusy = false; }
 }
 
 export function startOpsMonitor(): void {
   const run = () => tick().catch((err) => logger.error({ err }, "ops-monitor tick failed"));
   run();
   setInterval(run, TICK_MS);
-  logger.info({ everyMs: TICK_MS }, "ops-monitor started");
+  void maintLoop();
+  setInterval(() => void maintLoop(), MAINT_TICK_MS);
+  logger.info({ everyMs: TICK_MS, maintEveryMs: MAINT_TICK_MS }, "ops-monitor started");
 }
