@@ -224,9 +224,38 @@
     @apply border-border;
   }
 
+  html { scroll-behavior: smooth; }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+}
+
+/* ── Smooth, snappy motion (cheap, GPU-friendly) ───────────────────────────── */
+@layer utilities {
+  @keyframes vj-fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes vj-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  /* Page content eases in on route change (keyed by pathname in App). */
+  .vj-page { animation: vj-fade-up .28s cubic-bezier(.22,.61,.36,1) both; }
+  .vj-fade { animation: vj-fade .2s ease both; }
+  /* Make common interactive elements feel responsive without per-element classes. */
+  a, button, input, select, textarea, [role="button"] {
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease,
+                box-shadow .15s ease, transform .12s ease, opacity .15s ease;
+  }
+  a:active, button:active, [role="button"]:active { transform: translateY(.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
 
 @layer utilities {

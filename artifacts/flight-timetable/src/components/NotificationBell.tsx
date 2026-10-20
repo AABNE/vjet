@@ -42,7 +42,7 @@ export function NotificationBell() {
   return (
     <div className="relative" ref={ref}>
       <button onClick={toggle} data-testid="button-notifications"
-        className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20">
+        className="relative flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-[#1a1a1a]">
         <Bell className="h-4 w-4" />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fb5713] px-1 text-[9px] font-black text-white">

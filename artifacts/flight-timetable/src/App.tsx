@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
-import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio, FileText, Gauge, Bot, Wrench } from "lucide-react";
+import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio, FileText, Gauge, Bot, Wrench, PanelLeft } from "lucide-react";
 import { VJetstarLogo } from "@/components/VJetstarLogo";
 import { useEffect, useState } from "react";
 import { useIsDesktopApp } from "@/hooks/useSimLink";
@@ -257,6 +257,10 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [pwDone, setPwDone] = useState(false);
   const [tutDone, setTutDone] = useState(false);
 
+  // Collapsible sidebar (slides away); preference persisted per browser.
+  const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem("vj-nav") !== "0"; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem("vj-nav", navOpen ? "1" : "0"); } catch { /* ignore */ } }, [navOpen]);
+
   const publicPage = path === "/login";
   useEffect(() => {
     if (!isLoading && !user && !publicPage) setPath("/login");
@@ -287,30 +291,34 @@ function Layout({ children }: { children: React.ReactNode }) {
       {needsTutorial && <TutorialModal onDone={() => setTutDone(true)} />}
       <AutoFlightTimer />
 
-      <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between border-b border-[#1a1a1a] bg-[#1a1a1a] px-4 md:px-8">
-        <Link href="/timetable" className="flex items-center gap-3" data-testid="link-brand-home">
-          <VJetstarLogo height={34} light />
-          <div className="ml-1 hidden sm:block">
-            <div className="font-mono text-[9px] uppercase tracking-[.2em] text-white/40">Virtual ops · MSFS</div>
-          </div>
-        </Link>
+      <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between border-b border-[#e5e7eb] bg-white/90 px-3 backdrop-blur md:px-5">
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setNavOpen((o) => !o)} aria-label="Toggle menu"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#1a1a1a]">
+            <PanelLeft className="h-5 w-5" />
+          </button>
+          <Link href="/timetable" className="flex items-center gap-3" data-testid="link-brand-home">
+            <VJetstarLogo height={26} />
+            <span className="ml-1 hidden font-mono text-[9px] uppercase tracking-[.2em] text-[#9ca3af] sm:block">Virtual ops · MSFS</span>
+          </Link>
+        </div>
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-white/60 sm:flex">
+          <div className="hidden items-center gap-2 rounded-full border border-[#e5e7eb] px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-[#6b7280] sm:flex">
             <span className="h-1.5 w-1.5 rounded-full bg-[#fb5713]" /> Ops ready
           </div>
           <NotificationBell />
-          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 font-black uppercase text-white" data-testid="text-user-avatar">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] font-black uppercase text-[#1a1a1a]" data-testid="text-user-avatar">
             {user.username.slice(0, 1)}
           </div>
           <div className="hidden min-w-[80px] md:block">
-            <div className="text-sm font-bold text-white" data-testid="text-username">{user.username}</div>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-white/40">{user.isAdmin ? "Admin" : (pilot.simulatorVersion || "Pilot")}</div>
+            <div className="text-sm font-bold text-[#1a1a1a]" data-testid="text-username">{user.username}</div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{user.isAdmin ? "Admin" : (pilot.simulatorVersion || "Pilot")}</div>
           </div>
         </div>
       </header>
 
       <div className="mx-auto flex max-w-[1500px] flex-col md:min-h-[calc(100dvh-64px)] md:flex-row">
-        <aside className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-[#e5e7eb] bg-white p-2 md:w-[220px] md:flex-col md:gap-1 md:border-b-0 md:border-r md:p-4">
+        <aside className={`${navOpen ? "flex" : "hidden md:flex"} shrink-0 flex-row gap-1 overflow-x-auto border-b border-[#e5e7eb] bg-white p-2 transition-[width,opacity,padding] duration-300 ease-out md:flex-col md:gap-1 md:overflow-hidden md:border-b-0 md:border-r md:p-4 ${navOpen ? "md:w-[220px] md:opacity-100" : "md:w-0 md:min-w-0 md:p-0 md:opacity-0 md:border-r-0 md:pointer-events-none"}`}>
           <div className="hidden px-3 pb-2 pt-3 font-mono text-[9px] font-bold uppercase tracking-[.24em] text-[#9ca3af] md:block">Flight deck</div>
           {displayedNav.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`}
@@ -360,7 +368,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         </aside>
 
         <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-9">
-          {children}
+          <div key={path} className="vj-page">{children}</div>
           <footer className="mt-16 border-t border-[#f3f4f6] py-4 font-mono text-[9px] uppercase tracking-[.17em] text-[#d1d5db]">
             Virtual operations only · Not affiliated with Jetstar Airways
           </footer>
