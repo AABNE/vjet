@@ -19,6 +19,8 @@ export const usersTable = pgTable("users", {
   // Flight tracking: "simlink" (PC) | "volanta" (Xbox).
   trackingMethod: text("tracking_method").notNull().default("simlink"),
   volantaUsername: text("volanta_username"),
+  // Discord account the pilot signed up with — used to DM their ops notifications.
+  discordId: text("discord_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

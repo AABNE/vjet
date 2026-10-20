@@ -605,6 +605,7 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
           isAdmin: "false",
           hasSeenTutorial: "false",
           mustChangePassword: "true",
+          discordId: applicantId,
         }).onConflictDoNothing({ target: usersTable.username }).returning();
 
         accountCreated = inserted.length > 0;

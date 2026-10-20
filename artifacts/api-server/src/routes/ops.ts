@@ -11,7 +11,7 @@ import {
   setPaused, setAutoApprove, recentRuns,
 } from "../lib/ops-core";
 import { collectTracking } from "../lib/tracking";
-import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot } from "../lib/fleet";
+import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot, reassignOrCancel } from "../lib/fleet";
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 import { getMany, toIcao } from "../lib/weather";
 import { applyApproval } from "../lib/approvals";
@@ -165,7 +165,10 @@ router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
     title: `${reg} grounded${location ? ` at ${location}` : ""}`,
     body: outstation ? `${reason}. Ferrying maintenance up; ~${Math.round((ferryOut + repairMinutes + ferryBack) / 60)}h to return to service.` : reason,
     refType: "aircraft", refId: reg });
-  res.json({ ok: true, etaAt: etaAt.toISOString(), outstation });
+
+  // Move its remaining booked flights to a spare, or cancel them.
+  const moved = await reassignOrCancel(reg, `${reg} grounded: ${reason}`);
+  res.json({ ok: true, etaAt: etaAt.toISOString(), outstation, ...moved });
 });
 
 // Today's rotations, grouped by aircraft — the daily tail roster ops built.
@@ -420,32 +423,11 @@ router.post("/maintenance/report", async (req, res): Promise<void> => {
   await logEvent({ kind: "report_created", severity: requestRestriction ? "critical" : "info", actor: `user:${u.id}`, agentKey: "maintenance",
     title: `Aircraft issue reported — ${registration}`, body: `${category}: ${description.slice(0, 160)}`, refType: "maintenance_report", refId: report.id });
 
-  // If the pilot flags it unfit → precautionary hold + fleet manager proposes swaps.
+  // If the pilot flags it unfit → precautionary hold, then move its remaining
+  // booked flights onto a spare (or cancel them). The Ops Manager auto-approves.
   if (requestRestriction) {
-    const { affected } = await applyHold(registration, `Pilot report: ${category}`, { reportId: report.id, actor: `user:${u.id}` });
-    // Propose a replacement per affected sector (auto-apply only if configured).
-    for (const s of affected) {
-      if (!s.flight) continue;
-      const replacement = await findReplacement(s.flight.aircraft, registration);
-      if (!replacement) {
-        await logEvent({ kind: "schedule_conflict", severity: "warn", agentKey: "fleet-manager", title: `No replacement for ${s.flight.flightNumber}`, body: `No available ${s.flight.aircraft} to replace ${registration}. Flag for review.`, refType: "flight", refId: s.flight.id });
-        continue;
-      }
-      const payload = { timetableId: s.timetable.id, flightId: s.flight.id, registration: replacement, pilotUserId: s.timetable.userId, flightNumber: s.flight.flightNumber };
-      if (await autoActionAllowed("fleet-manager", "aircraft_swap")) {
-        const r = await assignAircraft({ timetableId: s.timetable.id, flightId: s.flight.id, registration: replacement, by: "agent:fleet-manager", reason: "auto swap (aircraft on hold)" });
-        if (r.ok) {
-          await logEvent({ kind: "swap_proposed", agentKey: "fleet-manager", title: `Auto swap — ${s.flight.flightNumber} → ${replacement}`, refType: "flight", refId: s.flight.id });
-          await notifyPilot(s.timetable.userId, `Aircraft change — ${s.flight.flightNumber}`, `${registration} is on a maintenance hold; you've been moved to ${replacement}.`);
-        }
-      } else {
-        await requestApproval({ agentKey: "fleet-manager", actionType: "aircraft_swap",
-          title: `Swap ${s.flight.flightNumber}: ${registration} → ${replacement}`,
-          reason: `${registration} on maintenance hold`, payload,
-          affected: { flightNumber: s.flight.flightNumber, pilotUserId: s.timetable.userId },
-          validation: { compatibleType: true, replacementAvailable: true } });
-      }
-    }
+    await applyHold(registration, `Pilot report: ${category}`, { reportId: report.id, actor: `user:${u.id}` });
+    await reassignOrCancel(registration, `${registration} on maintenance hold: ${category}`);
   }
   res.status(201).json({ ok: true, id: report.id, status: report.status });
 });

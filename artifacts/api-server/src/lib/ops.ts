@@ -9,8 +9,10 @@ import {
   notificationsTable,
   pilotDisciplineTable,
   pilotInfractionsTable,
+  usersTable,
   type PilotDiscipline,
 } from "@workspace/db";
+import { sendDiscordDM } from "./discord-dm";
 
 export function periodKey(now = new Date()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -26,6 +28,13 @@ export async function notify(
     await db.insert(notificationsTable).values({ userId, kind, title, body });
   } catch {
     /* notifications are best-effort */
+  }
+  // Also DM the pilot's Discord inbox (the account they signed up with).
+  try {
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    if (u?.discordId) void sendDiscordDM(u.discordId, title, body);
+  } catch {
+    /* best-effort */
   }
 }
 

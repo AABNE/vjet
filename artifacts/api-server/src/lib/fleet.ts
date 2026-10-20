@@ -2,7 +2,7 @@
 // precautionary virtual-maintenance-hold workflow. Backend-enforced — a held
 // aircraft can never be assigned or marked dispatch-ready.
 import {
-  db, eq, and,
+  db, eq, and, gt,
   aircraftTable, aircraftAssignmentsTable, maintenanceReportsTable,
   dispatchRecordsTable, timetableTable, flightsTable,
 } from "@workspace/db";
@@ -27,6 +27,53 @@ export async function findReplacement(type: string, excludeReg?: string): Promis
     if (!busy.has(ac.registration)) return ac.registration;
   }
   return null;
+}
+
+// A genuine spare: an active aircraft of the type with NO upcoming flights at
+// all (one of the tails the scheduler kept idle). Preferred for replacements.
+export async function findSpare(type: string, excludeReg: string): Promise<string | null> {
+  const fleet = await db.select().from(aircraftTable)
+    .where(and(eq(aircraftTable.type, type), eq(aircraftTable.status, "active")));
+  const now = new Date();
+  for (const ac of fleet) {
+    if (ac.registration === excludeReg) continue;
+    const [busy] = await db.select().from(flightsTable)
+      .where(and(eq(flightsTable.registration, ac.registration), gt(flightsTable.departsAt, now))).limit(1);
+    if (!busy) return ac.registration;
+  }
+  return null;
+}
+
+// When an aircraft goes tech, move its upcoming booked sectors onto a spare, or
+// cancel them if nothing's free. Only touches not-yet-started future flights.
+export async function reassignOrCancel(registration: string, reason: string): Promise<{ reassigned: number; cancelled: number }> {
+  const now = Date.now();
+  const entries = await db.select().from(timetableTable).where(eq(timetableTable.status, "pending"));
+  let reassigned = 0, cancelled = 0;
+  for (const tt of entries) {
+    const [f] = await db.select().from(flightsTable).where(eq(flightsTable.id, tt.flightId));
+    if (!f) continue;
+    const [asg] = await db.select().from(aircraftAssignmentsTable)
+      .where(and(eq(aircraftAssignmentsTable.timetableId, tt.id), eq(aircraftAssignmentsTable.status, "assigned")));
+    const eff = asg?.registration ?? f.registration ?? null;
+    if (eff !== registration) continue;
+    if (f.departsAt && new Date(f.departsAt).getTime() <= now) continue; // leave anything underway/past
+
+    const repl = (await findSpare(f.aircraft, registration)) ?? (await findReplacement(f.aircraft, registration));
+    if (repl) {
+      await assignAircraft({ timetableId: tt.id, flightId: f.id, registration: repl, by: "agent:fleet-manager", reason });
+      await notify(tt.userId, "ops", `Aircraft change — ${f.flightNumber}`, `${registration} went tech; you've been moved to ${repl}. Same route and time.`);
+      reassigned++;
+    } else {
+      await db.delete(timetableTable).where(eq(timetableTable.id, tt.id));
+      await notify(tt.userId, "ops", `Flight cancelled — ${f.flightNumber}`, `${registration} went tech and no spare aircraft was free, so ${f.departure}-${f.arrival} is cancelled. Please pick another flight.`);
+      cancelled++;
+    }
+  }
+  if (reassigned || cancelled) {
+    await logEvent({ kind: "swap_proposed", agentKey: "fleet-manager", title: `${registration} tech — ${reassigned} reassigned, ${cancelled} cancelled`, body: reason, refType: "aircraft", refId: registration });
+  }
+  return { reassigned, cancelled };
 }
 
 // Assign (or reassign) a registration to a timetable sector. Refuses a held

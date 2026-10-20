@@ -38,6 +38,7 @@ const WIDE_TURN_MS = 60 * 60_000;
 const NARROW_MAX_SECTORS = 6;
 const WIDE_MAX_SECTORS = 2;
 const WIDEBODY = new Set(["B788"]);
+const SPARE_FRACTION = 0.2; // share of each fleet type kept idle as spares
 const ANCHOR_TZ = "Australia/Sydney"; // reference zone for the operational day
 
 // ── Timezone helpers (handle AEST/AEDT, ACST, AWST, NZ and Asia/Pacific + DST)
@@ -130,7 +131,13 @@ export function computeDesiredFlights(now: Date = new Date(), fleet: Record<stri
     for (const type of types) {
       const adj = cat[type];
       if (!adj) continue;
-      const tails = [...fleet[type]].sort();
+      // Don't roster the whole fleet — keep ~20% idle as spares (so there's cover
+      // when one goes tech), rotating which tails rest from day to day.
+      const sorted = [...fleet[type]].sort();
+      const useCount = Math.max(1, Math.round(sorted.length * (1 - SPARE_FRACTION)));
+      const dayNum = Math.floor(Date.UTC(date.y, date.mo - 1, date.d) / 86400000);
+      const startIdx = sorted.length ? dayNum % sorted.length : 0;
+      const tails = Array.from({ length: Math.min(useCount, sorted.length) }, (_, k) => sorted[(startIdx + k) % sorted.length]);
       const wide = WIDEBODY.has(type);
       const maxSectors = wide ? WIDE_MAX_SECTORS : NARROW_MAX_SECTORS;
       const turn = wide ? WIDE_TURN_MS : NARROW_TURN_MS;
