@@ -33,32 +33,15 @@ export default function Login() {
 
       <div className="relative mx-auto grid min-h-[100dvh] max-w-7xl grid-cols-1 lg:grid-cols-[1fr_.9fr]">
 
-        {/* LEFT: Branding */}
-        <section className="flex flex-col justify-between px-8 py-10 text-white md:px-16 md:py-14">
-          {/* Real vJetstar logo — light version (white text) */}
-          <VJetstarLogo height={42} light />
-
-          <div className="max-w-xl py-14">
-            <h1 className="text-5xl font-black uppercase leading-[.92] tracking-tight text-white md:text-7xl">
-              Your next<br />
-              <span className="text-white/30">sector</span><br />
-              starts here.
-            </h1>
-          </div>
-
-          <p className="font-mono text-[9px] uppercase tracking-[.2em] text-white/35">
-            Independent virtual simulation product · Not affiliated with Jetstar Airways
-          </p>
+        {/* LEFT: Branding — just the logo, centred */}
+        <section className="flex flex-col items-center justify-center px-8 py-14 text-white">
+          <VJetstarLogo height={64} light />
+          <p className="mt-6 font-mono text-[11px] uppercase tracking-[.3em] text-white/55">Pilot hub login</p>
         </section>
 
         {/* RIGHT: Login card */}
         <section className="flex items-center justify-center bg-white px-6 py-12 text-[#1a1a1a] lg:my-8 lg:mr-8 lg:rounded-2xl">
           <div className="w-full max-w-md">
-            {/* Logo mark on card — dark version */}
-            <div className="mb-8">
-              <VJetstarLogo height={28} />
-            </div>
-
             <p className="font-mono text-[10px] font-semibold uppercase tracking-[.2em] text-[#fb5713]">Pilot Access</p>
             <h2 className="mt-2 text-3xl font-black uppercase tracking-tight text-[#1a1a1a]">Welcome back</h2>
             <p className="mt-2 text-sm leading-6 text-[#6b7280]">Sign in to view your roster and dispatch your next flight.</p>
@@ -117,6 +100,10 @@ export default function Login() {
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
+
+            <a href="/apply" className="mt-5 block rounded-lg border border-[#e5e7eb] px-5 py-3 text-center text-sm text-[#6b7280] transition hover:border-[#fb5713]/40 hover:bg-[#fff7ed]">
+              Don't have a login? <span className="font-bold text-[#fb5713]">Check your DMs or apply here</span>
+            </a>
 
             <div className="mt-8 border-t border-[#f3f4f6] pt-5 font-mono text-[9px] uppercase leading-5 tracking-wider text-[#9ca3af]">
               Access restricted to virtual operations accounts.<br />
