@@ -201,6 +201,25 @@ router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
   res.json({ ok: true, etaAt: etaAt ? etaAt.toISOString() : null, outstation, maintenance: withMaintenance, ...moved });
 });
 
+// Remove an aircraft from the fleet entirely. Its booked flights are moved to a
+// same-airport replacement or cancelled, and any maintenance on it is cleared.
+router.delete("/ops/aircraft/:reg", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const reg = String(req.params.reg).toUpperCase();
+  const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
+  if (!ac) { res.status(404).json({ error: "Aircraft not found" }); return; }
+
+  const moved = await reassignOrCancel(reg, `${reg} removed from the fleet`);
+  await db.update(maintenanceJobsTable).set({ phase: "done", updatedAt: new Date() })
+    .where(and(eq(maintenanceJobsTable.registration, reg), inArray(maintenanceJobsTable.phase, ["deferred", "awaiting_part", "in_repair"])));
+  await db.update(maintenanceReportsTable).set({ holdActive: false, status: "closed", updatedAt: new Date() })
+    .where(and(eq(maintenanceReportsTable.registration, reg), eq(maintenanceReportsTable.holdActive, true)));
+  await db.delete(aircraftAssignmentsTable).where(eq(aircraftAssignmentsTable.registration, reg));
+  await db.delete(aircraftTable).where(eq(aircraftTable.registration, reg));
+  await logEvent({ kind: "audit", actor: `user:${u.id}`, agentKey: "fleet-manager", title: `Aircraft removed — ${reg}`, body: `${reg} removed from the fleet.`, refType: "aircraft", refId: reg });
+  res.json({ ok: true, ...moved });
+});
+
 // Today's rotations, grouped by aircraft — the daily tail roster ops built.
 router.get("/ops/rotations", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;

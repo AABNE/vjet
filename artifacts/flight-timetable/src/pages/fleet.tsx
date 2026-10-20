@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Plane, Loader2, Plus } from "lucide-react";
 
 interface Ac { registration: string; type: string; status: string; note: string | null; assigned: boolean }
@@ -36,6 +36,11 @@ export default function Fleet() {
   async function returnToService(registration: string) {
     await apiPost(`/api/ops/aircraft/${registration}`, { status: "active" }).catch(() => {});
     await q.refetch(); qc.invalidateQueries({ queryKey: ["ops-overview"] });
+  }
+  async function remove(registration: string) {
+    if (!window.confirm(`Remove ${registration} from the fleet? Its booked flights will be moved to another aircraft or cancelled.`)) return;
+    await apiDelete(`/api/ops/aircraft/${registration}`).catch(() => {});
+    await q.refetch(); await maint.refetch(); qc.invalidateQueries({ queryKey: ["ops-overview"] });
   }
   async function ground(registration: string, maintenance: boolean) {
     const reason = prompt(maintenance
@@ -137,6 +142,7 @@ export default function Fleet() {
                         <button onClick={() => ground(a.registration, true)} title="Ground and send to maintenance (auto-repairs and returns to service)" className="rounded-lg border border-[#e5e7eb] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6]">Ground</button>
                         <button onClick={() => ground(a.registration, false)} title="Ground without maintenance — stays grounded until you return it to service" className="rounded-lg border border-[#e5e7eb] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6]">Ground · no maint</button>
                       </>}
+                      <button onClick={() => remove(a.registration)} title="Remove this aircraft from the fleet" className="rounded-lg border border-[#e5e7eb] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:border-red-200 hover:text-red-600">Remove</button>
                     </div>
                   </div>
                 ))}

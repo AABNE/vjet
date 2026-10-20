@@ -24,3 +24,10 @@ export async function apiPost<T = any>(path: string, body?: unknown): Promise<T>
   }
   return data as T;
 }
+
+export async function apiDelete<T = any>(path: string): Promise<T> {
+  const res = await fetch(path, { method: "DELETE", credentials: "include" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as any)?.error || `Request failed (${res.status})`);
+  return data as T;
+}
