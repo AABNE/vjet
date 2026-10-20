@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
-import { getBan } from "../lib/ops";
+import { getBan, hubConnected } from "../lib/ops";
 import { findBookingConflict, conflictMessage } from "../lib/booking";
 
 import {
@@ -248,6 +248,11 @@ router.post("/timetable/:id/start", async (req, res): Promise<void> => {
   const ban = await getBan(req.session.userId);
   if (ban.banned) {
     res.status(403).json({ error: `You're grounded until ${ban.until?.toUTCString()}. Flights are locked while suspended.`, bannedUntil: ban.until?.toISOString() });
+    return;
+  }
+
+  if (!(await hubConnected(req.session.userId))) {
+    res.status(409).json({ error: "Pilot hub not detected. Install and open the vJetstar Sim Link app (with MSFS running) before starting a flight.", hubRequired: true });
     return;
   }
 

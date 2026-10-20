@@ -2,6 +2,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { getGetTimetableQueryKey, useGetTimetable, useStartFlight, useFinishFlight, useRemoveFromTimetable } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
 import { useSimLink } from "@/hooks/useSimLink";
+import { useHubStatus } from "@/hooks/useHubStatus";
 import { apiGet } from "@/lib/api";
 import { AlertTriangle, ArrowRight, Clock3, ExternalLink, Plane, Radio, RotateCw, Wind } from "lucide-react";
 import { Link } from "wouter";
@@ -113,6 +114,8 @@ export default function Timetable() {
   // rolls from the gate and finishes once it's flown and parked again. Here we
   // just surface what it's doing. Without the app, the manual buttons do it.
   const { isApp, connected, position } = useSimLink();
+  const hub = useHubStatus();
+  const hubConnected = hub.data?.connected ?? false;
   const moving = (position?.groundSpeedKt ?? 0) > 1;
   const autoMode = Boolean(isApp && connected);
 
@@ -142,6 +145,15 @@ export default function Timetable() {
           </div>
         )}
       </div>
+
+      {/* Pilot hub not detected — flights can't be started / cleared */}
+      {hub.isSuccess && !hubConnected && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-xs text-[#92400e]" role="status">
+          <span className="font-bold">Pilot hub not detected.</span>
+          <span>You need the vJetstar Sim Link desktop app open (with MSFS running) to start a flight or get clearance.</span>
+          <Link href="/software" className="ml-auto font-bold underline">Get the app</Link>
+        </div>
+      )}
 
       {/* Errors */}
       {(start.error || finish.error || remove.error) && (
@@ -266,9 +278,10 @@ export default function Timetable() {
                           {isAuto ? "Finish now" : "Finish sector"}
                         </button>
                       ) : (
-                        <button data-testid={`button-start-flight-${entry.id}`} disabled={start.isPending}
+                        <button data-testid={`button-start-flight-${entry.id}`} disabled={start.isPending || !hubConnected}
                           onClick={() => start.mutate({ id: entry.id })}
-                          className="rounded-xl bg-[#1a1a1a] px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-50">
+                          title={hubConnected ? undefined : "Open the vJetstar Sim Link app (with MSFS running) to start a flight"}
+                          className="rounded-xl bg-[#1a1a1a] px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-50 disabled:cursor-not-allowed">
                           {isAuto ? "Start now" : "Start flight"}
                         </button>
                       )}

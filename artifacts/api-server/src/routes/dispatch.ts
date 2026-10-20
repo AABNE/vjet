@@ -2,11 +2,10 @@ import { Router, type IRouter } from "express";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
 import { fetchSimbriefBriefing, SimbriefError, type SimbriefBriefing } from "../lib/simbrief";
-import { notify, getBan, addInfraction } from "../lib/ops";
+import { notify, getBan, addInfraction, hubConnected } from "../lib/ops";
+import { aiComplete } from "../lib/ai";
 
 const router: IRouter = Router();
-
-const OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free";
 
 // ElevenLabs DEFAULT voices — available to every account, including the free
 // plan. We deliberately do NOT use shared-library voices: those return
@@ -195,6 +194,10 @@ router.post("/dispatch/:id/clearance", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Request dispatch approval before clearance." });
     return;
   }
+  if (!(await hubConnected(user.id))) {
+    res.status(409).json({ error: "Pilot hub not detected. Install and open the vJetstar Sim Link app (with MSFS running) to get clearance.", hubRequired: true });
+    return;
+  }
   const [updated] = await db.update(timetableTable)
     .set({ dispatchStatus: "cleared" })
     .where(eq(timetableTable.id, entry.id)).returning();
@@ -288,42 +291,25 @@ router.post("/dispatch/chat", async (req, res): Promise<void> => {
     "You are NOT air traffic control — you handle company dispatch: flight plans, fuel, weather, delays, approvals and clearances to push/start.",
     "The dispatch flow the pilot follows: import their SimBrief briefing → request dispatch (you approve) → request clearance (you clear them to push) → push back and fly. If they push back before clearance it's logged as an infraction, so remind them to get cleared first.",
     "If asked how to get dispatch: tell them to open the Dispatch screen, import their SimBrief plan, then use Request dispatch and Request clearance — or just ask you here.",
+    "Look over the filed flight path/route when one is present: comment on anything notable — routing, cruise altitude, distance/fuel, and weather at departure/arrival or along the way — and flag issues or suggest a reroute if it looks off.",
     "Never invent ATC clearances, squawks or frequencies as if official; keep it to company ops advice.",
     "",
     "Current operational picture:",
     ...planLines,
   ].join("\n");
 
-  try {
-    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://vjet.pilothub.aabne.net",
-        "X-Title": "vJetstar Dispatch",
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [{ role: "system", content: system }, ...trimmed],
-        temperature: 0.6,
-        max_tokens: 500,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!r.ok) {
-      const detail = await r.text().catch(() => "");
-      req.log?.warn?.({ status: r.status, detail }, "OpenRouter error");
-      res.status(502).json({ error: "Dispatch is unreachable right now. Try again shortly." });
-      return;
-    }
-    const data = await r.json() as any;
-    const reply = data?.choices?.[0]?.message?.content?.trim?.() || "Say again?";
-    res.json({ reply });
-  } catch (e) {
-    req.log?.warn?.({ err: e }, "OpenRouter request failed");
-    res.status(502).json({ error: "Dispatch is unreachable right now. Try again shortly." });
+  const result = await aiComplete("dispatch", [{ role: "system", content: system }, ...trimmed]);
+  if (result.ok) {
+    res.json({ reply: result.text });
+    return;
   }
+  // Degrade gracefully instead of a hard 502, so the chat still responds.
+  req.log?.warn?.({ error: result.error, model: result.model }, "dispatch AI unavailable");
+  const callsign = f?.flightNumber ? `${f.flightNumber}, ` : "";
+  const reply = f
+    ? `${callsign}dispatch copies. Our AI desk is briefly offline, but you're clear to work the normal flow: import your SimBrief plan, Request dispatch, then Request clearance before pushback. Try me again in a moment.`
+    : `Dispatch desk here — our AI assistant is briefly offline. Add a sector to your timetable and import a SimBrief plan, then I'll have your full picture. Try again shortly.`;
+  res.json({ reply, degraded: true });
 });
 
 // GET /api/dispatch/voice-status — is the ElevenLabs key configured?

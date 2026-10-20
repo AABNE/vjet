@@ -15,6 +15,7 @@ import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegist
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 import { getMany, toIcao } from "../lib/weather";
 import { applyApproval } from "../lib/approvals";
+import { hubConnected } from "../lib/ops";
 import { MAINT_MINUTE_MS, skipDelivery, setSetting } from "../lib/maintenance";
 
 const router: IRouter = Router();
@@ -51,6 +52,14 @@ router.post("/pilot/tracking", async (req, res): Promise<void> => {
   if (method !== "volanta") volanta = volanta || null;
   await db.update(usersTable).set({ trackingMethod: method, volantaUsername: volanta }).where(eq(usersTable.id, u.id));
   res.json({ ok: true, trackingMethod: method, volantaUsername: volanta });
+});
+
+// Is the pilot hub (Sim Link desktop app) connected right now? Drives the
+// warnings + whether a flight can be started / cleared.
+router.get("/pilot/hub-status", async (req, res): Promise<void> => {
+  const u = await requireUser(req, res); if (!u) return;
+  const connected = await hubConnected(u.id);
+  res.json({ connected, msfsRunning: !!u.msfsRunning, lastSeenAt: u.lastSeenAt ? new Date(u.lastSeenAt).toISOString() : null });
 });
 
 // ── Operations dashboard overview ───────────────────────────────────────────

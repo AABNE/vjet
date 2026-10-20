@@ -5,8 +5,15 @@ import { db, eq, sql, aiConfigTable, aiUsageTable } from "@workspace/db";
 import { logger } from "./logger";
 
 const OPENROUTER = "https://openrouter.ai/api/v1";
-// Safe default model (the free one we've been using) for any agent without config.
-export const DEFAULT_MODEL = "google/gemma-4-26b-a4b-it:free";
+// Safe default model for any agent without config. Must be a real OpenRouter id.
+export const DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct:free";
+// Always-tried fallbacks (long-standing free models) so a bad/unavailable
+// configured model still gets a working answer instead of a hard failure.
+const BUILTIN_FALLBACKS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemma-2-9b-it:free",
+  "mistralai/mistral-7b-instruct:free",
+];
 
 export interface ResolvedConfig {
   agentKey: string; provider: string; modelId: string; enabled: boolean;
@@ -111,7 +118,7 @@ export async function aiComplete(agentKey: string, messages: { role: string; con
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) return { ok: false, text: "", model: cfg.modelId, error: "no OPENROUTER_API_KEY" };
 
-  const candidates = [cfg.modelId, ...(cfg.fallbackModelId ? [cfg.fallbackModelId] : [])];
+  const candidates = [...new Set([cfg.modelId, ...(cfg.fallbackModelId ? [cfg.fallbackModelId] : []), ...BUILTIN_FALLBACKS])];
   let lastErr = "";
   for (const model of candidates) {
     for (let attempt = 0; attempt <= cfg.maxRetries; attempt++) {

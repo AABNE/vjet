@@ -14,6 +14,16 @@ import {
 } from "@workspace/db";
 import { sendDiscordDM } from "./discord-dm";
 
+// The pilot hub (vJetstar Sim Link desktop app) is considered connected when it
+// sent a heartbeat recently. Flying actions (start / clearance) require it.
+const HUB_PRESENCE_MS = 5 * 60_000;
+export async function hubConnected(userId: number): Promise<boolean> {
+  try {
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    return !!(u?.lastSeenAt && Date.now() - new Date(u.lastSeenAt).getTime() < HUB_PRESENCE_MS);
+  } catch { return false; }
+}
+
 export function periodKey(now = new Date()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }

@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetAvailableFlightsQueryKey, getGetTimetableQueryKey, useGetAvailableFlights, useAddToTimetable } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
+import { useHubStatus } from "@/hooks/useHubStatus";
+import { Link } from "wouter";
 import { DownloadCloud, MapPin, Plane, Plus, RotateCw, Search, X } from "lucide-react";
 
 function JetstarStar({ size = 16, className = "" }: { size?: number; className?: string }) {
@@ -25,6 +27,7 @@ export default function Flights() {
 
   const q = useGetAvailableFlights({ query: { queryKey: getGetAvailableFlightsQueryKey(), refetchOnMount: "always", refetchInterval: 30_000 } });
   const add = useAddToTimetable({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTimetableQueryKey() }); qc.invalidateQueries({ queryKey: getGetAvailableFlightsQueryKey() }); } } });
+  const hub = useHubStatus();
 
   const all = q.data || [];
   const rows = useMemo(() =>
@@ -37,6 +40,13 @@ export default function Flights() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      {hub.isSuccess && !hub.data?.connected && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-xs text-[#92400e]" role="status">
+          <span className="font-bold">Heads up:</span>
+          <span>you can add flights to plan ahead, but you'll need the vJetstar Sim Link desktop app open (with MSFS running) to actually start or get clearance for them.</span>
+          <Link href="/software" className="ml-auto font-bold underline">Get the app</Link>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
