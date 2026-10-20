@@ -246,15 +246,17 @@
   /* Page content eases in on route change (keyed by pathname in App). */
   .vj-page { animation: vj-fade-up .28s cubic-bezier(.22,.61,.36,1) both; }
   .vj-fade { animation: vj-fade .18s ease both; }
-  /* Typing/loading dots for the AI chat. */
-  @keyframes vj-dot { 0%,60%,100% { transform: translateY(0); opacity:.4 } 30% { transform: translateY(-3px); opacity:1 } }
+  /* Typing/loading dots for the AI chat — opacity only (no transform) so it
+     fades smoothly and never jitters. */
+  @keyframes vj-dot { 0%,100% { opacity:.25 } 50% { opacity:1 } }
   .vj-typing { display:inline-flex; align-items:center; gap:3px; }
   .vj-typing i { width:5px; height:5px; border-radius:9999px; background:currentColor; animation: vj-dot 5s ease-in-out infinite; }
   .vj-typing i:nth-child(2) { animation-delay:1.67s }
   .vj-typing i:nth-child(3) { animation-delay:3.33s }
 
-  /* Looping visual animations (status icons, dots, spinners) run at 5s. */
-  .animate-spin { animation-duration: 5s !important; }
+  /* Every looping visual animation (status icons, dots, spinners, skeletons)
+     runs at a steady 5s. */
+  .animate-spin { animation-duration: 5s !important; animation-timing-function: linear !important; }
   .animate-pulse { animation-duration: 5s !important; }
   .animate-ping { animation-duration: 5s !important; }
   .animate-bounce { animation-duration: 5s !important; }
