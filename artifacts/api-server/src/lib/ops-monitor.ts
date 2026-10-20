@@ -16,7 +16,7 @@ import { refreshAirports, getWeather, isAdverse } from "./weather";
 import { opsManagerReview } from "./approvals";
 import { maintenanceTick } from "./maintenance";
 
-const TICK_MS = 2 * 60_000;
+const TICK_MS = 15_000;
 
 // ── Flight monitoring + automated delay reports ─────────────────────────────
 async function flightMonitorTick(): Promise<void> {
@@ -172,7 +172,7 @@ async function tick(): Promise<void> {
 // Maintenance runs on its own, faster cadence so grounded aircraft are worked
 // and returned to service promptly (the compressed repair clock resolves in
 // minutes). Kept separate from the main tick so the two never run it at once.
-const MAINT_TICK_MS = 30_000;
+const MAINT_TICK_MS = 15_000;
 let maintBusy = false;
 async function maintLoop(): Promise<void> {
   if (maintBusy) return;

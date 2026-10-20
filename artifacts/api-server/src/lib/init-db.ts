@@ -276,6 +276,12 @@ export async function initDb(): Promise<void> {
       );
       ALTER TABLE "agent_state" ADD COLUMN IF NOT EXISTS "manual_actions" TEXT NOT NULL DEFAULT '[]';
 
+      CREATE TABLE IF NOT EXISTS "ops_settings" (
+        "key"        TEXT PRIMARY KEY,
+        "value"      TEXT NOT NULL DEFAULT '',
+        "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS "ai_config" (
         "agent_key"         TEXT PRIMARY KEY,
         "provider"          TEXT NOT NULL DEFAULT 'openrouter',

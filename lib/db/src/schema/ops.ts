@@ -187,3 +187,11 @@ export const agentStateTable = pgTable("agent_state", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export type AgentState = typeof agentStateTable.$inferSelect;
+
+// Simple key/value operational settings (e.g. maintenance "skip delivery time").
+export const opsSettingsTable = pgTable("ops_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type OpsSetting = typeof opsSettingsTable.$inferSelect;

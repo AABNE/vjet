@@ -8,7 +8,7 @@
 import {
   db, eq, and, inArray, lte, sql,
   maintenanceReportsTable, maintenanceJobsTable, partsInventoryTable,
-  aircraftTable, aircraftAssignmentsTable, timetableTable,
+  aircraftTable, aircraftAssignmentsTable, timetableTable, opsSettingsTable,
 } from "@workspace/db";
 import { runAgentTask, logEvent, isPaused } from "./ops-core";
 import { clearHold } from "./fleet";
@@ -26,12 +26,25 @@ const REPAIR_BASE: Record<string, { minutes: number; part: string | null }> = {
 const BUFFER_MIN = 180; // + 3h
 const MAINT_BASES = ["YSSY", "YBBN", "YPPH", "YMML"];
 
-// Sim time compression. Repair/ferry durations are quoted in "minutes" that are
-// realistic in proportion, but we play them out fast so the whole cycle (ground
-// → repair → return to service) is watchable and survives a free-tier window.
-// Default: 1 sim-minute = 1 real second (60×). Set MAINT_MINUTE_MS=60000 for
-// true real-time.
-export const MAINT_MINUTE_MS = Number(process.env.MAINT_MINUTE_MS) || 1000;
+// Real time by default: one quoted minute of repair/ferry is one real minute.
+// Override with MAINT_MINUTE_MS (e.g. 1000 = 60× faster) if you want to watch a
+// whole cycle quickly.
+export const MAINT_MINUTE_MS = Number(process.env.MAINT_MINUTE_MS) || 60_000;
+
+// ── Operational settings (key/value) ────────────────────────────────────────
+export async function getSetting(key: string): Promise<string | null> {
+  const [r] = await db.select().from(opsSettingsTable).where(eq(opsSettingsTable.key, key));
+  return r?.value ?? null;
+}
+export async function setSetting(key: string, value: string): Promise<void> {
+  await db.insert(opsSettingsTable).values({ key, value, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: opsSettingsTable.key, set: { value, updatedAt: new Date() } });
+}
+// When on, parts are available immediately — the factory-ferry delivery wait is
+// skipped — but the repair itself still runs in real time.
+export async function skipDelivery(): Promise<boolean> {
+  return (await getSetting("skip_delivery_time")) === "1";
+}
 
 // Map a free-text category/description to a repair profile + keyword flags.
 function classify(category: string, description: string): { key: string; profile: { minutes: number; part: string | null }; unfit: boolean; returned: boolean } {
@@ -79,6 +92,7 @@ export async function maintenanceTick(): Promise<void> {
   if (await isPaused("maintenance")) return;
   await runAgentTask("maintenance", "Work maintenance holds", async ({ taskRunId }) => {
     const now = Date.now();
+    const skip = await skipDelivery(); // parts arrive instantly when on (repair stays real-time)
     let opened = 0, ordered = 0, deferred = 0, completed = 0;
 
     // 1) Open a job for any held report that doesn't have one yet.
@@ -105,6 +119,10 @@ export async function maintenanceTick(): Promise<void> {
         const have = await stock(profile.part);
         if (have > 0) {
           await addStock(profile.part, -1);
+        } else if (skip) {
+          // Delivery skipped: part is on hand immediately, repair runs in real time.
+          orderedSpares = 2; // the rest of the batch is shelved on completion
+          note = `${profile.part} fitted immediately (delivery skipped); ${Math.round(repairMinutes / 60)}h repair`;
         } else {
           const delivery = ferryDeliveryMinutes(acType);
           phase = "awaiting_part"; eta = now + (delivery + repairMinutes) * MAINT_MINUTE_MS; orderedSpares = 2; // order 3, use 1, 2 spare
@@ -127,6 +145,7 @@ export async function maintenanceTick(): Promise<void> {
       if (j.part) {
         const have = await stock(j.part);
         if (have > 0) await addStock(j.part, -1);
+        else if (skip) { orderedSpares = 2; } // part on hand immediately; repair real-time
         else { const delivery = ferryDeliveryMinutes(ac?.type ?? "A320"); phase = "awaiting_part"; eta = now + (delivery + j.repairMinutes) * MAINT_MINUTE_MS; orderedSpares = 2; ordered++; }
       }
       await db.update(maintenanceJobsTable).set({ phase, etaAt: new Date(eta), orderedSpares, updatedAt: new Date() }).where(eq(maintenanceJobsTable.id, j.id));

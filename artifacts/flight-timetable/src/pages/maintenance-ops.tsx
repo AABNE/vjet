@@ -33,7 +33,15 @@ export default function MaintenanceOps() {
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const q = useQuery<{ reports: MaintRow[] }>({ queryKey: ["maint-admin", filter], queryFn: () => apiGet(`/api/maintenance${filter ? `?status=${filter}` : ""}`), refetchInterval: 15_000, retry: false });
-  const state = useQuery<{ jobs: Job[]; parts: Part[] }>({ queryKey: ["maint-state"], queryFn: () => apiGet("/api/ops/maintenance/state"), refetchInterval: 15_000, retry: false });
+  const state = useQuery<{ jobs: Job[]; parts: Part[]; skipDelivery: boolean }>({ queryKey: ["maint-state"], queryFn: () => apiGet("/api/ops/maintenance/state"), refetchInterval: 15_000, retry: false });
+  const [togglingSkip, setTogglingSkip] = useState(false);
+
+  async function toggleSkip() {
+    const next = !(state.data?.skipDelivery ?? false);
+    setTogglingSkip(true);
+    try { await apiPost("/api/ops/maintenance/skip-delivery", { enabled: next }); await state.refetch(); }
+    finally { setTogglingSkip(false); }
+  }
 
   if (user && user.isAdmin !== true) {
     return <div className="mx-auto max-w-2xl rounded-2xl border border-[#e5e7eb] bg-white p-10 text-center text-[#6b7280]">The maintenance dashboard is for administrators.</div>;
@@ -66,8 +74,18 @@ export default function MaintenanceOps() {
           <Bot className="h-4 w-4 text-[#fb5713]" />
           <span className="font-mono text-[10px] font-bold uppercase tracking-[.2em] text-white/70">Autonomous maintenance engine</span>
           <span className="ml-auto flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Active · {state.isLoading ? "…" : "every 2 min"}
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Active · every 15s
           </span>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-white/5 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-white">Skip part-delivery time</div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-white/40">Parts fitted immediately · repairs still run in real time</div>
+          </div>
+          <button onClick={toggleSkip} disabled={togglingSkip}
+            className={`ml-auto flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition ${state.data?.skipDelivery ? "justify-end bg-[#fb5713]" : "justify-start bg-white/20"} disabled:opacity-50`}>
+            <span className="h-5 w-5 rounded-full bg-white shadow" />
+          </button>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
           <Stat label="In repair" value={inHangar} />

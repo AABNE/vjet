@@ -15,7 +15,7 @@ import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegist
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 import { getMany, toIcao } from "../lib/weather";
 import { applyApproval } from "../lib/approvals";
-import { MAINT_MINUTE_MS } from "../lib/maintenance";
+import { MAINT_MINUTE_MS, skipDelivery, setSetting } from "../lib/maintenance";
 
 const router: IRouter = Router();
 
@@ -176,7 +176,17 @@ router.get("/ops/maintenance/state", async (req, res): Promise<void> => {
   res.json({
     jobs: jobs.map((j) => ({ id: j.id, registration: j.registration, category: j.category, part: j.part, phase: j.phase, etaAt: j.etaAt ? j.etaAt.toISOString() : null, location: j.location, note: j.note })),
     parts: parts.map((p) => ({ part: p.part, qty: p.qty })),
+    skipDelivery: await skipDelivery(),
   });
+});
+
+// Toggle "skip delivery time": parts arrive instantly, repair stays real-time.
+router.post("/ops/maintenance/skip-delivery", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const on = req.body?.enabled === true || req.body?.enabled === "1";
+  await setSetting("skip_delivery_time", on ? "1" : "0");
+  await logEvent({ kind: "audit", actor: `user:${u.id}`, agentKey: "maintenance", title: `Skip delivery time ${on ? "ON" : "OFF"}`, body: on ? "Parts are now fitted immediately; repairs still run in real time." : "Parts are ferried in from the factory again." });
+  res.json({ ok: true, skipDelivery: on });
 });
 
 router.patch("/ops/aircraft/:reg", async (req, res): Promise<void> => {
