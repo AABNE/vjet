@@ -3,7 +3,7 @@ import {
   db, eq, and, desc, inArray, sql,
   usersTable, flightsTable, timetableTable,
   aircraftTable, aircraftAssignmentsTable, delayReportsTable,
-  maintenanceReportsTable,
+  maintenanceReportsTable, maintenanceJobsTable, partsInventoryTable,
   operationalEventsTable, agentTaskRunsTable, approvalsTable, agentStateTable,
 } from "@workspace/db";
 import {
@@ -13,7 +13,7 @@ import {
 import { collectTracking } from "../lib/tracking";
 import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot } from "../lib/fleet";
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
-import { getMany } from "../lib/weather";
+import { getMany, toIcao } from "../lib/weather";
 import { applyApproval } from "../lib/approvals";
 
 const router: IRouter = Router();
@@ -126,6 +126,56 @@ router.post("/ops/aircraft", async (req, res): Promise<void> => {
   await db.insert(aircraftTable).values({ registration, type, note: req.body?.note ?? null });
   await logEvent({ kind: "audit", actor: `user:${u.id}`, title: `Aircraft added — ${registration} (${type})`, refType: "aircraft", refId: registration });
   res.status(201).json({ ok: true });
+});
+
+// Ground an aircraft from the Fleet tab, optionally at an outstation. If it's
+// away from a maintenance base, maintenance personnel are ferried up (1h prep +
+// flight), the repair runs, then they ferry back to Sydney.
+const MAINT_BASES = ["YSSY", "YBBN", "YPPH", "YMML"];
+router.post("/ops/aircraft/:reg/ground", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const reg = String(req.params.reg).toUpperCase();
+  const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
+  if (!ac) { res.status(404).json({ error: "Aircraft not found" }); return; }
+  const reason = String(req.body?.reason || "Technical difficulties").slice(0, 300);
+  const location = String(req.body?.location || "").trim().toUpperCase();
+  const icao = location ? toIcao(location) : null;
+  const outstation = !!icao && !MAINT_BASES.includes(icao);
+
+  await db.update(aircraftTable).set({ status: "grounded", note: reason, updatedAt: new Date() }).where(eq(aircraftTable.registration, reg));
+  const [rep] = await db.insert(maintenanceReportsTable).values({
+    registration: reg, reportedByUserId: u.id, category: "other",
+    description: `${location ? `At ${location}: ` : ""}${reason}`,
+    status: "maintenance_hold", priority: "high", requestRestriction: true, holdActive: true,
+  }).returning();
+
+  // Pre-create the repair job (so the engine completes + returns it to service).
+  const repairMinutes = 300; // generic ground
+  const ferryOut = outstation ? 60 + 90 : 0; // prep + flight up
+  const ferryBack = outstation ? 90 : 0;      // crew ferried back to SYD
+  const etaAt = new Date(Date.now() + (ferryOut + repairMinutes + ferryBack) * 60_000);
+  await db.insert(maintenanceJobsTable).values({
+    registration: reg, reportId: rep.id, category: "other", repairMinutes,
+    phase: "in_repair", etaAt, location: icao ?? (location || null),
+    note: outstation ? `Maintenance personnel ferried to ${location}; crew return to SYD after the fix.` : "At base.",
+  });
+
+  await logEvent({ kind: "aircraft_hold", severity: "critical", actor: `user:${u.id}`, agentKey: "maintenance",
+    title: `${reg} grounded${location ? ` at ${location}` : ""}`,
+    body: outstation ? `${reason}. Ferrying maintenance up; ~${Math.round((ferryOut + repairMinutes + ferryBack) / 60)}h to return to service.` : reason,
+    refType: "aircraft", refId: reg });
+  res.json({ ok: true, etaAt: etaAt.toISOString(), outstation });
+});
+
+// Maintenance engine state (jobs + parts) for the dashboards.
+router.get("/ops/maintenance/state", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const jobs = await db.select().from(maintenanceJobsTable).where(inArray(maintenanceJobsTable.phase, ["deferred", "awaiting_part", "in_repair"])).orderBy(desc(maintenanceJobsTable.createdAt));
+  const parts = await db.select().from(partsInventoryTable).orderBy(partsInventoryTable.part);
+  res.json({
+    jobs: jobs.map((j) => ({ id: j.id, registration: j.registration, category: j.category, part: j.part, phase: j.phase, etaAt: j.etaAt ? j.etaAt.toISOString() : null, location: j.location, note: j.note })),
+    parts: parts.map((p) => ({ part: p.part, qty: p.qty })),
+  });
 });
 
 router.patch("/ops/aircraft/:reg", async (req, res): Promise<void> => {

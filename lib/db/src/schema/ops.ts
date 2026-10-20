@@ -153,6 +153,32 @@ export type Approval = typeof approvalsTable.$inferSelect;
 
 // ── Agent runtime state (pause + auto-action config) ────────────────────────
 // agentKey "global" holds the emergency-pause flag for all autonomous actions.
+// ── Maintenance engine: repair jobs + parts inventory ──────────────────────
+export const maintenanceJobsTable = pgTable("maintenance_jobs", {
+  id: serial("id").primaryKey(),
+  registration: text("registration").notNull(),
+  reportId: integer("report_id"),
+  category: text("category").notNull().default("other"),
+  part: text("part"),
+  repairMinutes: integer("repair_minutes").notNull().default(180),
+  // deferred | awaiting_part | in_repair | done
+  phase: text("phase").notNull().default("in_repair"),
+  etaAt: timestamp("eta_at", { withTimezone: true }),
+  location: text("location"),
+  orderedSpares: integer("ordered_spares").notNull().default(0),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type MaintenanceJob = typeof maintenanceJobsTable.$inferSelect;
+
+export const partsInventoryTable = pgTable("parts_inventory", {
+  part: text("part").primaryKey(),
+  qty: integer("qty").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type PartsInventory = typeof partsInventoryTable.$inferSelect;
+
 export const agentStateTable = pgTable("agent_state", {
   agentKey: text("agent_key").primaryKey(),
   paused: boolean("paused").notNull().default(false),

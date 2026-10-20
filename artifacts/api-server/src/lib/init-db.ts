@@ -244,6 +244,29 @@ export async function initDb(): Promise<void> {
         "created_at"        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS "maintenance_jobs" (
+        "id"             SERIAL PRIMARY KEY,
+        "registration"   TEXT NOT NULL,
+        "report_id"      INTEGER,
+        "category"       TEXT NOT NULL DEFAULT 'other',
+        "part"           TEXT,
+        "repair_minutes" INTEGER NOT NULL DEFAULT 180,
+        "phase"          TEXT NOT NULL DEFAULT 'in_repair',
+        "eta_at"         TIMESTAMPTZ,
+        "location"       TEXT,
+        "ordered_spares" INTEGER NOT NULL DEFAULT 0,
+        "note"           TEXT,
+        "created_at"     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_maintjobs_reg" ON "maintenance_jobs" ("registration");
+
+      CREATE TABLE IF NOT EXISTS "parts_inventory" (
+        "part"       TEXT PRIMARY KEY,
+        "qty"        INTEGER NOT NULL DEFAULT 0,
+        "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS "agent_state" (
         "agent_key"    TEXT PRIMARY KEY,
         "paused"       BOOLEAN NOT NULL DEFAULT FALSE,
