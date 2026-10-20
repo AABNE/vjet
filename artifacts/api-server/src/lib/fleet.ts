@@ -44,6 +44,36 @@ export async function findSpare(type: string, excludeReg: string): Promise<strin
   return null;
 }
 
+// A logical replacement: an active aircraft of the type that is actually AT the
+// departure airport at that time and free to fly the sector (no teleporting).
+// Position is derived from its own rotation — where its last flight landed, or,
+// if it has none yet, where its day starts.
+const TURN_MS = 30 * 60_000;
+export async function findReplacementAtAirport(
+  type: string, airport: string, departMs: number, durationMin: number, excludeReg: string,
+): Promise<string | null> {
+  const fleet = await db.select().from(aircraftTable)
+    .where(and(eq(aircraftTable.type, type), eq(aircraftTable.status, "active")));
+  const winStart = departMs;
+  const winEnd = departMs + (durationMin + 30) * 60_000;
+  for (const ac of fleet) {
+    if (ac.registration === excludeReg) continue;
+    const fls = await db.select().from(flightsTable).where(eq(flightsTable.registration, ac.registration));
+    const timeline = fls
+      .filter((f) => f.departsAt)
+      .map((f) => { const dep = new Date(f.departsAt as Date).getTime(); return { dep, end: dep + (f.durationMinutes ?? 0) * 60_000, from: f.departure, to: f.arrival }; })
+      .sort((a, b) => a.dep - b.dep);
+    // Busy if any of its flights overlaps the window (incl. turnaround).
+    if (timeline.some((t) => t.dep < winEnd && t.end + TURN_MS > winStart)) continue;
+    // Where is it at departMs? Last flight that landed (with turnaround) before then.
+    let pos: string | null = null;
+    for (const t of timeline) { if (t.end + TURN_MS <= departMs) pos = t.to; }
+    if (pos === null && timeline.length) pos = timeline[0].from; // starts its day here
+    if (pos === airport) return ac.registration;
+  }
+  return null;
+}
+
 // When an aircraft goes tech, move its upcoming booked sectors onto a spare, or
 // cancel them if nothing's free. Only touches not-yet-started future flights.
 export async function reassignOrCancel(registration: string, reason: string): Promise<{ reassigned: number; cancelled: number }> {
@@ -59,7 +89,11 @@ export async function reassignOrCancel(registration: string, reason: string): Pr
     if (eff !== registration) continue;
     if (f.departsAt && new Date(f.departsAt).getTime() <= now) continue; // leave anything underway/past
 
-    const repl = (await findSpare(f.aircraft, registration)) ?? (await findReplacement(f.aircraft, registration));
+    // Only swap to an aircraft actually at this flight's departure airport.
+    const departMs = f.departsAt ? new Date(f.departsAt).getTime() : null;
+    const repl = departMs != null
+      ? await findReplacementAtAirport(f.aircraft, f.departure, departMs, f.durationMinutes, registration)
+      : null;
     if (repl) {
       await assignAircraft({ timetableId: tt.id, flightId: f.id, registration: repl, by: "agent:fleet-manager", reason });
       await notify(tt.userId, "ops", `Aircraft change — ${f.flightNumber}`, `${registration} went tech; you've been moved to ${repl}. Same route and time.`);

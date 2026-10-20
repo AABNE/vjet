@@ -16,7 +16,7 @@ import { refreshAirports, getWeather, isAdverse } from "./weather";
 import { opsManagerReview } from "./approvals";
 import { maintenanceTick } from "./maintenance";
 
-const TICK_MS = 15_000;
+const TICK_MS = 10_000;
 
 // ── Flight monitoring + automated delay reports ─────────────────────────────
 async function flightMonitorTick(): Promise<void> {

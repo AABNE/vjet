@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth-provider";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   Bot, Activity, CheckCircle2, XCircle, Pause, Play, AlertTriangle, ShieldCheck,
-  Loader2, ChevronDown, ChevronRight, Radio, Cpu,
+  Loader2, Radio, Cpu,
 } from "lucide-react";
 
 interface Agent {
@@ -46,7 +46,6 @@ export default function ControlRoom() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
-  const [openTask, setOpenTask] = useState<number | null>(null);
 
   const agents = useQuery<{ globalPaused: boolean; agents: Agent[] }>({ queryKey: ["ops-agents"], queryFn: () => apiGet("/api/ops/agents"), refetchInterval: 10_000, retry: false });
   const approvals = useQuery<{ approvals: Approval[] }>({ queryKey: ["ops-approvals"], queryFn: () => apiGet("/api/ops/approvals?status=pending"), refetchInterval: 10_000, retry: false });
@@ -69,6 +68,7 @@ export default function ControlRoom() {
   }
 
   const globalPaused = agents.data?.globalPaused;
+  const agentName = (key: string) => agents.data?.agents.find((a) => a.key === key)?.name ?? key.replace(/-/g, " ");
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -157,31 +157,19 @@ export default function ControlRoom() {
             ))}
           </div>
 
-          {/* Task history + decision traces */}
-          <h2 className="mb-3 mt-7 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><Activity className="h-4 w-4 text-[#fb5713]" />Recent tasks</h2>
-          <div className="space-y-2">
-            {(tasks.data?.tasks ?? []).slice(0, 25).map((t) => (
-              <div key={t.id} className="overflow-hidden rounded-xl border border-[#e5e7eb] bg-white">
-                <button onClick={() => setOpenTask(openTask === t.id ? null : t.id)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
-                  {openTask === t.id ? <ChevronDown className="h-3.5 w-3.5 text-[#9ca3af]" /> : <ChevronRight className="h-3.5 w-3.5 text-[#9ca3af]" />}
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${t.status === "error" ? "bg-red-500" : t.status === "working" ? "bg-sky-400" : "bg-emerald-400"}`} />
-                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#1a1a1a]">{t.task}</span>
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{t.agentKey} · {ago(t.startedAt)}</span>
-                </button>
-                {openTask === t.id && (
-                  <div className="space-y-2 border-t border-[#f3f4f6] bg-[#f9fafb] px-4 py-3 text-xs text-[#6b7280]">
-                    {t.objective && <div><b className="text-[#1a1a1a]">Objective:</b> {t.objective}</div>}
-                    {t.summary && <div><b className="text-[#1a1a1a]">Decision:</b> {t.summary}</div>}
-                    {t.facts && <div><b className="text-[#1a1a1a]">Facts:</b> <code className="break-all font-mono text-[10px]">{JSON.stringify(t.facts)}</code></div>}
-                    {t.proposedAction && <div><b className="text-[#1a1a1a]">Proposed:</b> {t.proposedAction}</div>}
-                    {t.outcome && <div><b className="text-[#1a1a1a]">Outcome:</b> {t.outcome}</div>}
-                    {t.error && <div className="text-red-600"><b>Error:</b> {t.error}</div>}
-                    <div className="font-mono text-[9px] uppercase tracking-wider text-[#c7ccd4]">{new Date(t.startedAt).toLocaleString()}{t.finishedAt ? ` → ${new Date(t.finishedAt).toLocaleTimeString()}` : " · running"}</div>
-                  </div>
-                )}
+          {/* Recent activity — one plain line per task */}
+          <h2 className="mb-3 mt-7 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><Activity className="h-4 w-4 text-[#fb5713]" />What the AI just did</h2>
+          <div className="divide-y divide-[#f3f4f6] overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+            {(tasks.data?.tasks ?? []).slice(0, 20).map((t) => (
+              <div key={t.id} className="flex items-start gap-2.5 px-4 py-2.5">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${t.status === "error" ? "bg-red-500" : t.status === "working" ? "bg-sky-400" : "bg-emerald-400"}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-[#1a1a1a]">{t.error ? <span className="text-red-600">{t.error}</span> : (t.summary || t.task)}</div>
+                  <div className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{agentName(t.agentKey)} · {ago(t.startedAt)}</div>
+                </div>
               </div>
             ))}
-            {(tasks.data?.tasks.length ?? 0) === 0 && <div className="rounded-xl border border-dashed border-[#e5e7eb] bg-white p-5 text-center text-sm text-[#9ca3af]">No agent runs yet — they start on the next monitor tick.</div>}
+            {(tasks.data?.tasks.length ?? 0) === 0 && <div className="p-5 text-center text-sm text-[#9ca3af]">Nothing yet — agents report here as they work (every 10s).</div>}
           </div>
         </section>
 
