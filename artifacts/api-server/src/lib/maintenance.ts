@@ -10,7 +10,7 @@ import {
   maintenanceReportsTable, maintenanceJobsTable, partsInventoryTable,
   aircraftTable, aircraftAssignmentsTable, timetableTable, opsSettingsTable,
 } from "@workspace/db";
-import { runAgentTask, logEvent, isPaused } from "./ops-core";
+import { runAgentTask, logEvent, isPaused, aiSummarize } from "./ops-core";
 import { clearHold } from "./fleet";
 
 // Base replacement time (minutes) per issue category; +3h is added on top.
@@ -164,8 +164,37 @@ export async function maintenanceTick(): Promise<void> {
     }
 
     const active = await db.select().from(maintenanceJobsTable).where(inArray(maintenanceJobsTable.phase, ["deferred", "awaiting_part", "in_repair"]));
-    const facts = { held: held.length, opened, ordered, deferred, completed, active: active.length };
-    return { facts, summary: `Worked ${held.length} hold(s): ${opened} new repair(s), ${ordered} part order(s), ${completed} returned to service, ${active.length} in progress.`, outcome: `${completed} returned, ${active.length} active` };
+    const inRepair = active.filter((j) => j.phase === "in_repair");
+    const awaitingPart = active.filter((j) => j.phase === "awaiting_part");
+    const deferredNow = active.filter((j) => j.phase === "deferred");
+    const facts = { opened, ordered, completed, inRepair: inRepair.length, awaitingPart: awaitingPart.length, deferred: deferredNow.length, active: active.length };
+
+    // Plain-English summary of what the agent actually did / what's going on.
+    const regs = (arr: typeof active) => arr.map((j) => j.registration).join(", ");
+    let human: string;
+    if (active.length === 0 && completed === 0 && opened === 0) {
+      human = "All aircraft serviceable — nothing in the hangar.";
+    } else {
+      const did: string[] = [];
+      if (opened) did.push(`started repairs on ${opened} aircraft`);
+      if (ordered) did.push(`ordered parts for ${ordered}`);
+      if (completed) did.push(`returned ${completed} to service`);
+      const state: string[] = [];
+      if (inRepair.length) state.push(`${inRepair.length} being repaired (${regs(inRepair)})`);
+      if (awaitingPart.length) state.push(`${awaitingPart.length} waiting on a part (${regs(awaitingPart)})`);
+      if (deferredNow.length) state.push(`${deferredNow.length} waiting to finish today's flights (${regs(deferredNow)})`);
+      human = did.length ? `Maintenance: ${did.join(", ")}.` : "Maintenance checked the hangar.";
+      if (state.length) human += ` In the hangar now: ${state.join("; ")}.`;
+      else if (did.length) human += " Hangar is clear.";
+    }
+
+    // Let the AI phrase it naturally when something actually changed; otherwise
+    // use the plain sentence (keeps idle 10-15s ticks cheap).
+    const summary = (opened || ordered || completed)
+      ? await aiSummarize("maintenance", `Write one short, plain sentence a non-technical manager would understand, describing what airline maintenance just did. Facts: ${JSON.stringify(facts)}. Aircraft in repair: ${regs(inRepair) || "none"}; awaiting part: ${regs(awaitingPart) || "none"}.`, human)
+      : human;
+
+    return { facts, summary, outcome: `${completed} returned, ${active.length} in maintenance` };
   });
 }
 
