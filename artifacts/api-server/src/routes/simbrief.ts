@@ -32,7 +32,8 @@ function mapAircraft(value: string | undefined): string | undefined {
   const code = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (["A320", "A320200"].includes(code)) return "A320";
   if (["A20N", "A320N", "A320NEO"].includes(code)) return "A20N";
-  if (["A21N", "A321", "A321NEO", "A321LR", "A321NEOLR"].includes(code)) return "A21N";
+  if (["A321", "A321CEO", "A321SL", "A321200", "A3212"].includes(code)) return "A321";
+  if (["A21N", "A321NEO", "A321LR", "A321NEOLR"].includes(code)) return "A21N";
   if (["B788", "B7878", "7878"].includes(code)) return "B788";
   return undefined;
 }

@@ -155,7 +155,7 @@ router.post("/ops/aircraft", async (req, res): Promise<void> => {
   const registration = String(req.body?.registration || "").trim().toUpperCase();
   const type = String(req.body?.type || "").trim().toUpperCase();
   if (!/^[A-Z0-9-]{3,10}$/.test(registration)) { res.status(400).json({ error: "Enter a valid registration." }); return; }
-  if (!["A320", "A20N", "A21N", "B788"].includes(type)) { res.status(400).json({ error: "Pick a valid fleet type." }); return; }
+  if (!["A320", "A321", "A20N", "A21N", "B788"].includes(type)) { res.status(400).json({ error: "Pick a valid fleet type." }); return; }
   const [existing] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, registration));
   if (existing) { res.status(409).json({ error: "That registration already exists." }); return; }
   await db.insert(aircraftTable).values({ registration, type, note: req.body?.note ?? null });
@@ -314,7 +314,7 @@ router.patch("/ops/aircraft/:reg", async (req, res): Promise<void> => {
   const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
   if (!ac) { res.status(404).json({ error: "Aircraft not found" }); return; }
   const patch: any = { updatedAt: new Date() };
-  if (["A320", "A20N", "A21N", "B788"].includes(req.body?.type)) patch.type = req.body.type;
+  if (["A320", "A321", "A20N", "A21N", "B788"].includes(req.body?.type)) patch.type = req.body.type;
   if (["active", "maintenance_hold", "grounded"].includes(req.body?.status)) patch.status = req.body.status;
   if (typeof req.body?.note === "string") patch.note = req.body.note || null;
   await db.update(aircraftTable).set(patch).where(eq(aircraftTable.registration, reg));

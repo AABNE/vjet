@@ -3,7 +3,7 @@ import { useAuth } from "@/components/auth-provider";
 import { LIVERIES, FLEET_LABELS, type FleetCode, type SimVersion } from "@/data/liveries";
 import { Download, ExternalLink, Plane, Palette } from "lucide-react";
 
-const FLEET_ORDER: FleetCode[] = ["A320", "A20N", "A21N", "B788"];
+const FLEET_ORDER: FleetCode[] = ["A320", "A321", "A20N", "A21N", "B788"];
 const SIM_ORDER: SimVersion[] = ["MSFS 2024", "MSFS 2020", "MSFS 2020 & 2024"];
 
 // Strong, distinct colours per sim version so nobody downloads the wrong one.

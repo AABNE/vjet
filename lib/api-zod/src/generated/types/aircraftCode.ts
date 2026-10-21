@@ -10,6 +10,7 @@ export type AircraftCode = (typeof AircraftCode)[keyof typeof AircraftCode];
 
 export const AircraftCode = {
   A320: "A320",
+  A321: "A321",
   A20N: "A20N",
   A21N: "A21N",
   B788: "B788",
