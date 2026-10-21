@@ -50,6 +50,7 @@ export async function initDb(): Promise<void> {
 
       ALTER TABLE "flights" ADD COLUMN IF NOT EXISTS "departs_at" TIMESTAMPTZ;
       ALTER TABLE "flights" ADD COLUMN IF NOT EXISTS "registration" TEXT;
+      CREATE INDEX IF NOT EXISTS "IDX_flights_type_departs" ON "flights" ("aircraft", "departs_at");
 
       CREATE TABLE IF NOT EXISTS "timetable" (
         "id"                      SERIAL PRIMARY KEY,

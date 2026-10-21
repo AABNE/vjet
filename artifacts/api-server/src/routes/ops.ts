@@ -237,6 +237,22 @@ router.delete("/ops/aircraft/:reg", async (req, res): Promise<void> => {
   res.json({ ok: true, ...moved });
 });
 
+// Return an aircraft to service: clears its status, closes any maintenance
+// hold/jobs/reports so the engine won't keep it grounded.
+router.post("/ops/aircraft/:reg/return", async (req, res): Promise<void> => {
+  const u = await requireAdmin(req, res); if (!u) return;
+  const reg = String(req.params.reg).toUpperCase();
+  const [ac] = await db.select().from(aircraftTable).where(eq(aircraftTable.registration, reg));
+  if (!ac) { res.status(404).json({ error: "Aircraft not found" }); return; }
+  await db.update(aircraftTable).set({ status: "active", note: null, updatedAt: new Date() }).where(eq(aircraftTable.registration, reg));
+  await db.update(maintenanceJobsTable).set({ phase: "done", updatedAt: new Date() })
+    .where(and(eq(maintenanceJobsTable.registration, reg), inArray(maintenanceJobsTable.phase, ["deferred", "awaiting_part", "in_repair"])));
+  await db.update(maintenanceReportsTable).set({ holdActive: false, status: "resolved", updatedAt: new Date() })
+    .where(and(eq(maintenanceReportsTable.registration, reg), eq(maintenanceReportsTable.holdActive, true)));
+  await logEvent({ kind: "audit", actor: `user:${u.id}`, agentKey: "maintenance", title: `${reg} returned to service`, refType: "aircraft", refId: reg });
+  res.json({ ok: true });
+});
+
 // Today's rotations, grouped by aircraft — the daily tail roster ops built.
 router.get("/ops/rotations", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;

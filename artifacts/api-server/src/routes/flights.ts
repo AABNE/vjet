@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, flightsTable, timetableTable, usersTable, eq, inArray } from "@workspace/db";
+import { db, flightsTable, timetableTable, usersTable, eq, inArray, and, gt, lt, asc } from "@workspace/db";
 import { GetAvailableFlightsResponse } from "@workspace/api-zod";
 import { isFlightAvailable } from "../lib/route-scheduler";
 
@@ -12,20 +12,27 @@ router.get("/flights", async (req, res): Promise<void> => {
   if (!user) { res.status(401).json({ error: "User not found" }); return; }
 
   const aircraftTypes = user.aircraft.split(",").map(s => s.trim()).filter(Boolean);
+  if (aircraftTypes.length === 0) { res.json(GetAvailableFlightsResponse.parse([])); return; }
 
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + 30 * 60_000);   // hide within 30 min of departure
+  const horizon = new Date(now.getTime() + 3 * 24 * 60 * 60_000); // only the planning window
+
+  // Filter in the DB (type + departure window) and cap the result — far less to
+  // load, serialise and render than pulling every flight.
+  const typeCond = aircraftTypes.length === 1
+    ? eq(flightsTable.aircraft, aircraftTypes[0])
+    : inArray(flightsTable.aircraft, aircraftTypes);
   const allFlights = await db.select().from(flightsTable)
-    .where(aircraftTypes.length === 1
-      ? eq(flightsTable.aircraft, aircraftTypes[0])
-      : inArray(flightsTable.aircraft, aircraftTypes))
-    .orderBy(flightsTable.flightDate, flightsTable.departureTime);
+    .where(and(typeCond, gt(flightsTable.departsAt, cutoff), lt(flightsTable.departsAt, horizon)))
+    .orderBy(asc(flightsTable.departsAt))
+    .limit(400);
 
   // Routes already in anyone's active/pending timetable disappear
   const takenEntries = await db.select().from(timetableTable);
   const takenFlightIds = new Set(
     takenEntries.filter(e => e.status !== "completed").map(e => e.flightId)
   );
-
-  const now = new Date();
 
   // Realistic routing: if the pilot has it on, they continue from where their
   // last flight landed — only show flights departing that airport.

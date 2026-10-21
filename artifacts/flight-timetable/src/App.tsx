@@ -321,9 +321,6 @@ function Layout({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-[#e5e7eb] px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-[#6b7280] sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#fb5713]" /> Ops ready
-          </div>
           <NotificationBell />
           <div className="relative" ref={profileRef}>
             <button onClick={() => setProfileOpen((o) => !o)} data-testid="button-profile-menu"

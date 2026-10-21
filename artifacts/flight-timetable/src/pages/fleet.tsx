@@ -34,8 +34,8 @@ export default function Fleet() {
     finally { setBusy(false); }
   }
   async function returnToService(registration: string) {
-    await apiPost(`/api/ops/aircraft/${registration}`, { status: "active" }).catch(() => {});
-    await q.refetch(); qc.invalidateQueries({ queryKey: ["ops-overview"] });
+    await apiPost(`/api/ops/aircraft/${registration}/return`).catch(() => {});
+    await q.refetch(); await maint.refetch(); qc.invalidateQueries({ queryKey: ["ops-overview"] });
   }
   async function remove(registration: string) {
     if (!window.confirm(`Remove ${registration} from the fleet? Its booked flights will be moved to another aircraft or cancelled.`)) return;
