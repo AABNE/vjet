@@ -37,6 +37,8 @@ app.use(cors({
 // Capture the raw body so Discord interaction signatures (Ed25519 over the exact
 // bytes) can be verified in the recruitment router.
 app.use(express.json({
+  // Headroom for report payloads that carry a base64 crew-call audio clip.
+  limit: "8mb",
   verify: (req, _res, buf) => {
     (req as express.Request).rawBody = Buffer.from(buf);
   },

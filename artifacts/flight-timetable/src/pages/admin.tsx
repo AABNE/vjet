@@ -881,6 +881,7 @@ type ReportUser = { id: number; username: string; avatarUrl: string | null };
 type Report = {
   id: number; reason: string; detail: string; context: string;
   status: "open" | "resolved" | "dismissed"; createdAt: string; resolvedAt: string | null;
+  chat: CockpitChatMsg[]; hasAudio: boolean;
   reporter: ReportUser; reported: ReportUser;
 };
 
@@ -940,11 +941,51 @@ function ReportsPanel() {
                     className="rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50">Dismiss</button>
                 </div>
               )}
+              {(r.chat.length > 0 || r.hasAudio) && <ReportEvidence report={r} />}
             </div>
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+// Evidence captured with a report: the crew-call recording + chat transcript.
+function ReportEvidence({ report }: { report: Report }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="w-full">
+      <button onClick={() => setShow((s) => !s)}
+        className="flex items-center gap-2 rounded-lg bg-[#f3f4f6] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#e5e7eb]">
+        <MessageSquare className="h-3.5 w-3.5" />
+        {show ? "Hide" : "View"} evidence · {report.chat.length} msg{report.hasAudio ? " · audio" : ""}
+      </button>
+      {show && (
+        <div className="mt-2 space-y-3 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] p-3">
+          {report.hasAudio && (
+            <div>
+              <div className="mb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-[#9ca3af]">Crew call — last ~2 min</div>
+              <audio controls preload="none" src={`/api/admin/reports/${report.id}/audio`} className="h-9 w-full" />
+            </div>
+          )}
+          <div>
+            <div className="mb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-[#9ca3af]">Crew chat</div>
+            {report.chat.length === 0 ? (
+              <p className="text-[11px] text-[#9ca3af]">No chat messages were sent.</p>
+            ) : (
+              <div className="max-h-48 space-y-1 overflow-y-auto">
+                {report.chat.map((m, i) => (
+                  <div key={i} className="text-xs">
+                    <span className={`font-mono text-[9px] font-bold uppercase tracking-wider ${m.username === report.reported.username ? "text-red-500" : "text-[#9ca3af]"}`}>{m.username}</span>
+                    <span className="ml-2 break-words text-[#374151]">{m.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -340,6 +340,8 @@ export async function initDb(): Promise<void> {
         "resolved_at"  TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS "IDX_user_reports_status" ON "user_reports" ("status", "created_at");
+      ALTER TABLE "user_reports" ADD COLUMN IF NOT EXISTS "chat" TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE "user_reports" ADD COLUMN IF NOT EXISTS "audio_clip" TEXT NOT NULL DEFAULT '';
     `);
 
     // Seed a virtual fleet (plausible Jetstar-style registrations) if empty.

@@ -12,6 +12,10 @@ export const userReportsTable = pgTable("user_reports", {
   // Optional free-text detail + where it happened (e.g. "cockpit ABC123").
   detail: text("detail").notNull().default(""),
   context: text("context").notNull().default(""),
+  // Evidence captured at report time: JSON crew-chat transcript + a base64
+  // data-URL of the recent crew-call audio (empty if voice wasn't on).
+  chat: text("chat").notNull().default("[]"),
+  audioClip: text("audio_clip").notNull().default(""),
   // "open" | "resolved" | "dismissed"
   status: text("status").notNull().default("open"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

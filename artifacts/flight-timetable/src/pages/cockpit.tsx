@@ -159,7 +159,8 @@ export default function Cockpit() {
                     </select>
                   )}
                   {state.you != null && p.userId !== state.you && (
-                    <ReportButton reportedId={p.userId} username={p.username} context={`cockpit ${code}`} />
+                    <ReportButton reportedId={p.userId} username={p.username} context={`cockpit ${code}`}
+                      getAudioClip={() => voiceRef.current?.captureClip() ?? null} />
                   )}
                 </div>
               ))}
@@ -304,7 +305,16 @@ function CrewChat({ code, chat, myId, participants }: { code: string; chat: Chat
 
 const REPORT_REASONS = ["Abusive language", "Harassment", "Inappropriate content", "Cheating / exploiting", "Spam", "Other"];
 
-function ReportButton({ reportedId, username, context }: { reportedId: number; username: string; context: string }) {
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+function ReportButton({ reportedId, username, context, getAudioClip }: { reportedId: number; username: string; context: string; getAudioClip?: () => Blob | null }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
@@ -316,7 +326,12 @@ function ReportButton({ reportedId, username, context }: { reportedId: number; u
     if (busy) return;
     setBusy(true); setErr("");
     try {
-      await apiPost("/api/reports", { reportedUserId: reportedId, reason, detail, context });
+      let audioClip = "";
+      try {
+        const blob = getAudioClip?.();
+        if (blob && blob.size > 0 && blob.size < 6_000_000) audioClip = await blobToDataUrl(blob);
+      } catch { /* audio is best-effort evidence */ }
+      await apiPost("/api/reports", { reportedUserId: reportedId, reason, detail, context, audioClip });
       setDone(true);
       setTimeout(() => { setOpen(false); setDone(false); setDetail(""); }, 1400);
     } catch (e: any) { setErr(e?.message || "Couldn't send the report."); }
@@ -348,6 +363,7 @@ function ReportButton({ reportedId, username, context }: { reportedId: number; u
                 <label className="mt-3 block font-mono text-[10px] font-bold uppercase tracking-wider text-[#6b7280]">What happened? (optional)</label>
                 <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} placeholder="Add any detail that helps the admins…"
                   className="mt-1 w-full resize-none rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm outline-none focus:border-[#fb5713]" />
+                <p className="mt-2 text-[11px] text-[#9ca3af]">The crew chat and a recording of the last couple of minutes of the call are attached automatically.</p>
                 {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
                 <div className="mt-4 flex gap-2">
                   <button onClick={() => setOpen(false)} disabled={busy} className="flex-1 rounded-xl border border-[#e5e7eb] px-4 py-2.5 text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6]">Cancel</button>

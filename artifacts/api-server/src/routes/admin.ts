@@ -370,11 +370,27 @@ router.get("/admin/reports", async (req, res): Promise<void> => {
         status: r.status,
         createdAt: r.createdAt.toISOString(),
         resolvedAt: r.resolvedAt ? r.resolvedAt.toISOString() : null,
+        chat: (() => { try { return JSON.parse(r.chat) as Array<{ userId: number; username: string; text: string; at: number }>; } catch { return []; } })(),
+        hasAudio: !!r.audioClip,
         reporter: { id: r.reporterId, username: reporter?.username ?? "(deleted)", avatarUrl: reporter?.avatarUrl ?? null },
         reported: { id: r.reportedId, username: reported?.username ?? "(deleted)", avatarUrl: reported?.avatarUrl ?? null },
       };
     }),
   });
+});
+
+// The recorded crew-call audio for a report, as an audio/webm stream (served
+// separately so the reports list stays light).
+router.get("/admin/reports/:id/audio", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid report ID" }); return; }
+  const [report] = await db.select().from(userReportsTable).where(eq(userReportsTable.id, id));
+  if (!report || !report.audioClip) { res.status(404).json({ error: "No audio for this report" }); return; }
+  const m = /^data:(audio\/[\w.+-]+);base64,(.*)$/s.exec(report.audioClip);
+  if (!m) { res.status(404).json({ error: "No audio for this report" }); return; }
+  res.setHeader("Content-Type", m[1]);
+  res.send(Buffer.from(m[2], "base64"));
 });
 
 // Resolve a report. action "strike" records an infraction against the pilot;

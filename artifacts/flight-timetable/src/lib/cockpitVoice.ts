@@ -16,6 +16,16 @@ export class VoiceManager {
   private local: MediaStream | null = null;
   private started = false;
 
+  // Rolling recorder: mixes local mic + every remote peer and keeps roughly the
+  // last couple of minutes, so a report can attach what the call sounded like.
+  private audioCtx: AudioContext | null = null;
+  private mixDest: MediaStreamAudioDestinationNode | null = null;
+  private recorder: MediaRecorder | null = null;
+  private recMime = "";
+  private headerChunk: Blob | null = null;
+  private tail: Blob[] = [];
+  private static TAIL_CAP = 60; // ~2 min at a 2s timeslice
+
   constructor(myId: number, send: (to: number, data: SignalData) => void, onStatus: (connected: boolean) => void) {
     this.myId = myId; this.send = send; this.onStatus = onStatus;
   }
@@ -25,8 +35,48 @@ export class VoiceManager {
     try {
       this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
       this.started = true;
+      this.startRecorder();
       return true;
     } catch { return false; }
+  }
+
+  // Build the mix graph + start a rolling MediaRecorder. Best-effort: if the
+  // browser can't record (e.g. Safari), captureClip() just returns null.
+  private startRecorder(): void {
+    if (this.recorder || !this.local) return;
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx || typeof MediaRecorder === "undefined") return;
+      this.audioCtx = new Ctx();
+      this.mixDest = this.audioCtx.createMediaStreamDestination();
+      this.mixInto(this.local);
+      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((m) => MediaRecorder.isTypeSupported(m));
+      if (!mime) return;
+      this.recMime = mime;
+      this.recorder = new MediaRecorder(this.mixDest.stream, { mimeType: mime, audioBitsPerSecond: 24000 });
+      this.recorder.ondataavailable = (e) => {
+        if (!e.data || e.data.size === 0) return;
+        if (!this.headerChunk) { this.headerChunk = e.data; return; }
+        this.tail.push(e.data);
+        if (this.tail.length > VoiceManager.TAIL_CAP) this.tail.shift();
+      };
+      this.recorder.start(2000);
+    } catch { /* recording is best-effort */ }
+  }
+
+  private mixInto(stream: MediaStream): void {
+    try {
+      if (!this.audioCtx || !this.mixDest) return;
+      if (this.audioCtx.state === "suspended") void this.audioCtx.resume();
+      this.audioCtx.createMediaStreamSource(stream).connect(this.mixDest);
+    } catch { /* ignore */ }
+  }
+
+  // A webm clip of roughly the last two minutes of the call (header + recent
+  // audio), or null if nothing was recorded.
+  captureClip(): Blob | null {
+    if (!this.headerChunk || !this.recMime) return null;
+    try { return new Blob([this.headerChunk, ...this.tail], { type: this.recMime }); } catch { return null; }
   }
 
   get muted(): boolean { return this.local ? !this.local.getAudioTracks().some((t) => t.enabled) : true; }
@@ -43,6 +93,8 @@ export class VoiceManager {
       if (!el) { el = new Audio(); el.autoplay = true; this.audioEls.set(peerId, el); }
       el.srcObject = e.streams[0];
       el.play().catch(() => { /* autoplay may need a gesture */ });
+      // Also feed this peer into the recording mix.
+      this.mixInto(e.streams[0]);
     };
     pc.onconnectionstatechange = () => {
       const anyConnected = [...this.peers.values()].some((p) => p.connectionState === "connected");
@@ -93,6 +145,10 @@ export class VoiceManager {
 
   stop(): void {
     for (const id of [...this.peers.keys()]) this.removePeer(id);
+    try { this.recorder?.state !== "inactive" && this.recorder?.stop(); } catch { /* */ }
+    try { void this.audioCtx?.close(); } catch { /* */ }
+    this.recorder = null; this.audioCtx = null; this.mixDest = null;
+    this.headerChunk = null; this.tail = [];
     this.local?.getTracks().forEach((t) => t.stop());
     this.local = null; this.started = false;
   }

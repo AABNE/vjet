@@ -60,6 +60,13 @@ export function sessionOfUser(userId: number): Session | undefined {
 }
 export function getSession(code: string): Session | undefined { return sessions.get(code.toUpperCase()); }
 
+// The crew-chat transcript of whatever cockpit a user is currently in (for
+// attaching to a report). Empty array if they're not in one.
+export function chatSnapshot(userId: number): ChatMessage[] {
+  const s = sessionOfUser(userId);
+  return s ? [...s.chat] : [];
+}
+
 function publicState(s: Session) {
   return {
     code: s.code,
