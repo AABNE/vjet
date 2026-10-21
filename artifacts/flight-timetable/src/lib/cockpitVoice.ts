@@ -5,7 +5,9 @@
 
 type SignalData = { type: "offer" | "answer" | "ice"; sdp?: any; candidate?: any };
 
-const ICE = { iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }] };
+import { apiGet } from "./api";
+
+const DEFAULT_ICE: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
 
 export class VoiceManager {
   private myId: number;
@@ -15,6 +17,8 @@ export class VoiceManager {
   private audioEls = new Map<number, HTMLAudioElement>();
   private local: MediaStream | null = null;
   private started = false;
+  // STUN + (when configured server-side) a TURN relay for cross-network calls.
+  private iceServers: RTCIceServer[] = DEFAULT_ICE;
 
   // Rolling recorder: mixes local mic + every remote peer and keeps roughly the
   // last couple of minutes, so a report can attach what the call sounded like.
@@ -34,6 +38,10 @@ export class VoiceManager {
     if (this.started) return true;
     try {
       this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      try {
+        const cfg = await apiGet<{ iceServers: RTCIceServer[] }>("/api/cockpit/ice");
+        if (cfg?.iceServers?.length) this.iceServers = cfg.iceServers;
+      } catch { /* fall back to STUN-only */ }
       this.started = true;
       this.startRecorder();
       return true;
@@ -85,7 +93,7 @@ export class VoiceManager {
   private pc(peerId: number): RTCPeerConnection {
     let pc = this.peers.get(peerId);
     if (pc) return pc;
-    pc = new RTCPeerConnection(ICE);
+    pc = new RTCPeerConnection({ iceServers: this.iceServers });
     this.local?.getTracks().forEach((t) => pc!.addTrack(t, this.local!));
     pc.onicecandidate = (e) => { if (e.candidate) this.send(peerId, { type: "ice", candidate: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {

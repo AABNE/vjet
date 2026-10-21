@@ -36,6 +36,23 @@ router.post("/cockpit/create", async (req: Request, res: Response): Promise<void
   res.json({ code: s.code });
 });
 
+// GET /api/cockpit/ice — ICE servers for the voice mesh. TURN credentials come
+// from env (served at runtime to signed-in users, never baked into the bundle)
+// so two pilots on strict/CGNAT networks can still relay a call.
+router.get("/cockpit/ice", async (req: Request, res: Response): Promise<void> => {
+  const u = await me(req); if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+  ];
+  const urls = (process.env.TURN_URLS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const username = process.env.TURN_USERNAME;
+  const credential = process.env.TURN_CREDENTIAL;
+  if (urls.length && username && credential) {
+    iceServers.push({ urls, username, credential });
+  }
+  res.json({ iceServers });
+});
+
 // GET /api/cockpit/:code — current state.
 router.get("/cockpit/:code", async (req: Request, res: Response): Promise<void> => {
   const u = await me(req); if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
