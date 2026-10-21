@@ -7,6 +7,7 @@ import { startOpsMonitor } from "./lib/ops-monitor";
 import { startSelfKeepalive } from "./lib/keepalive";
 import { registerDiscordCommands } from "./lib/discord-commands";
 import { cleanupOrphanCockpitVcs } from "./lib/discord-vc";
+import { startCockpitReaper } from "./lib/cockpit";
 
 const rawPort = process.env["PORT"];
 
@@ -51,5 +52,8 @@ initDb().then(() => {
 
     // Sweep any cockpit voice channels orphaned by a restart.
     void cleanupOrphanCockpitVcs();
+
+    // End abandoned shared cockpits + delete their voice channels.
+    startCockpitReaper();
   });
 });

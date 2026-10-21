@@ -49,6 +49,9 @@ interface Session {
   voiceUrl: string | null;
   voiceChannelId: string | null;
   voicePending: boolean;
+  // When the last live connection dropped (null while someone's connected) —
+  // the reaper ends the session + deletes the VC after a short grace period.
+  lastEmptyAt: number | null;
   // userId → SSE response (for targeted signalling + broadcast)
   streams: Map<number, { write: (s: string) => void }>;
 }
@@ -102,6 +105,7 @@ export function createSession(host: JoinUser, flight: FlightInfo): Session {
     code, hostUserId: host.userId, flight,
     participants: new Map(), createdAt: Date.now(), chat: [],
     voiceUrl: null, voiceChannelId: null, voicePending: voiceConfigured(),
+    lastEmptyAt: Date.now(),
     streams: new Map(),
   };
   s.participants.set(host.userId, { userId: host.userId, username: host.username, avatarUrl: host.avatarUrl, role: "pilot_flying", hasHub: host.hasHub, discordId: host.discordId, joinedAt: Date.now() });
@@ -177,12 +181,41 @@ export function attachStream(code: string, userId: number, write: (s: string) =>
   const s = sessions.get(code.toUpperCase());
   if (!s || !s.participants.has(userId)) return null;
   s.streams.set(userId, { write });
+  s.lastEmptyAt = null; // someone's connected again
   // Send current state + recent chat immediately.
   try { write(`event: state\ndata: ${JSON.stringify(publicState(s))}\n\n`); } catch { /* */ }
   try { write(`event: chat-history\ndata: ${JSON.stringify(s.chat)}\n\n`); } catch { /* */ }
   // Tell existing peers someone is ready (so the host can start the WebRTC offer).
   for (const [uid, stream] of s.streams) { if (uid !== userId) { try { stream.write(`event: peer-ready\ndata: ${JSON.stringify({ userId })}\n\n`); } catch { /* */ } } }
-  return () => { const cur = sessions.get(code.toUpperCase()); cur?.streams.delete(userId); };
+  return () => {
+    const cur = sessions.get(code.toUpperCase());
+    if (!cur) return;
+    cur.streams.delete(userId);
+    if (cur.streams.size === 0) cur.lastEmptyAt = Date.now();
+  };
+}
+
+// End a session outright: tear down its voice channel and forget it.
+function endSession(s: Session): void {
+  if (s.voiceChannelId) void deleteCockpitVc(s.voiceChannelId);
+  for (const p of s.participants.keys()) byUser.delete(p);
+  sessions.delete(s.code);
+  logger.info({ code: s.code }, "cockpit session reaped");
+}
+
+// Reap sessions whose crew has all disconnected (tab closed, navigated away,
+// crashed) and stayed gone past the grace period — so the Discord VC always
+// gets cleaned up even when no explicit "leave" arrived.
+const REAP_GRACE_MS = 45_000;
+export function startCockpitReaper(): void {
+  setInterval(() => {
+    const now = Date.now();
+    for (const s of [...sessions.values()]) {
+      if (s.streams.size === 0 && s.lastEmptyAt && now - s.lastEmptyAt > REAP_GRACE_MS) {
+        endSession(s);
+      }
+    }
+  }, 20_000).unref?.();
 }
 
 // Post a crew chat message; stores it (capped) and broadcasts to everyone.
