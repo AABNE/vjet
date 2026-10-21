@@ -8,7 +8,7 @@ import { timetableTable } from "./timetable";
 export const aircraftTable = pgTable("aircraft", {
   id: serial("id").primaryKey(),
   registration: text("registration").notNull().unique(), // e.g. VH-VFO
-  type: text("type").notNull(),                           // fleet code: A320 | A20N | A21N | B788
+  type: text("type").notNull(),                           // fleet code: A320 | A321 | A20N | A21N | B788
   // "active" | "maintenance_hold" | "grounded"
   status: text("status").notNull().default("active"),
   note: text("note"),

@@ -22,6 +22,7 @@ import { ROUTE_PAIRS, AIRPORT_TZ } from "../data/jetstar-network";
 // the seeded registrations so default assignments reference real tails.
 export const DEFAULT_FLEET: Record<string, string[]> = {
   A320: "ABCDEFGHJKLMNP".split("").map((l) => `VH-VG${l}`),
+  A321: ["VH-VWQ", "VH-VWW", "VH-VWX", "VH-VWN"],
   A20N: "ABCDEFGHJK".split("").map((l) => `VH-A5${l}`),
   A21N: "ABCDEFGH".split("").map((l) => `VH-OF${l}`),
   B788: "ABCDEF".split("").map((l) => `VH-VK${l}`),

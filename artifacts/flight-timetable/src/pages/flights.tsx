@@ -90,7 +90,7 @@ export default function Flights() {
         <select data-testid="select-route-aircraft" value={fleet} onChange={e => setFleet(e.target.value)}
           className="h-11 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 text-xs font-semibold text-[#1a1a1a] outline-none focus:border-[#fb5713]">
           <option>All aircraft</option>
-          {["A320", "A20N", "A21N", "B788"].map(a => <option key={a}>{a}</option>)}
+          {["A320", "A321", "A20N", "A21N", "B788"].map(a => <option key={a}>{a}</option>)}
         </select>
       </div>
 

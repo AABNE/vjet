@@ -400,7 +400,7 @@ export async function initDb(): Promise<void> {
         `INSERT INTO "users" (username, password_hash, aircraft, simulator_version, is_admin, has_seen_tutorial, must_change_password)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (username) DO NOTHING`,
-        ["admin", hash, "A320,A20N,A21N,B788", "MSFS2024", "true", "false", "false"]
+        ["admin", hash, "A320,A321,A20N,A21N,B788", "MSFS2024", "true", "false", "false"]
       );
       logger.info("Default admin created — username: admin / password: admin1234");
     }

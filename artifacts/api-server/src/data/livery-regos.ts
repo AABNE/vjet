@@ -10,6 +10,10 @@ export const LIVERY_REGOS: Record<string, string[]> = {
     "VH-VQG", "VH-VQH", "VH-VQK", "VH-VQL", "VH-VQM",
     "VH-VGF",
   ],
+  A321: [
+    // A321ceo (IAE) — real Jetstar VH-VW_ tails, per the Fenix A321 liveries.
+    "VH-VWQ", "VH-VWW", "VH-VWX", "VH-VWN",
+  ],
   A20N: [
     "VH-A5A", "VH-A5B", "VH-A5C", "VH-A5D", "VH-A5E", "VH-A5F",
   ],
