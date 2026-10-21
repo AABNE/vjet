@@ -3,7 +3,7 @@ import { db, usersTable, timetableTable, flightsTable, eq, and } from "@workspac
 import { hubConnected, hubRequired, notify } from "../lib/ops";
 import {
   createSession, joinSession, leaveSession, setRole, getSession, sessionOfUser,
-  attachStream, signal, publicState, type FlightInfo, type Role,
+  attachStream, signal, postChat, publicState, type FlightInfo, type Role,
 } from "../lib/cockpit";
 
 const router: IRouter = Router();
@@ -81,6 +81,15 @@ router.post("/cockpit/:code/invite", async (req: Request, res: Response): Promis
   if (!target) { res.status(404).json({ error: "No pilot with that username." }); return; }
   await notify(target.id, "ops", `Shared cockpit invite — ${s.flight.flightNumber}`,
     `${u.username} invited you to fly ${s.flight.departure}→${s.flight.arrival} together. Join at /cockpit/${s.code}`);
+  res.json({ ok: true });
+});
+
+// POST /api/cockpit/:code/chat { text } — crew chat (flight plans, links, etc.).
+router.post("/cockpit/:code/chat", async (req: Request, res: Response): Promise<void> => {
+  const u = await me(req); if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const text = String(req.body?.text || "").trim();
+  if (!text) { res.status(400).json({ error: "Empty message." }); return; }
+  if (!postChat(u.id, text)) { res.status(400).json({ error: "You're not in this cockpit." }); return; }
   res.json({ ok: true });
 });
 

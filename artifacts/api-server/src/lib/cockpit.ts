@@ -32,12 +32,15 @@ export interface FlightInfo {
   flightDate: string;
 }
 
+export interface ChatMessage { userId: number; username: string; text: string; at: number }
+
 interface Session {
   code: string;
   hostUserId: number;
   flight: FlightInfo;
   participants: Map<number, Participant>;
   createdAt: number;
+  chat: ChatMessage[];
   // userId → SSE response (for targeted signalling + broadcast)
   streams: Map<number, { write: (s: string) => void }>;
 }
@@ -80,7 +83,7 @@ export function createSession(host: { userId: number; username: string; avatarUr
   const code = genCode();
   const s: Session = {
     code, hostUserId: host.userId, flight,
-    participants: new Map(), createdAt: Date.now(), streams: new Map(),
+    participants: new Map(), createdAt: Date.now(), chat: [], streams: new Map(),
   };
   s.participants.set(host.userId, { userId: host.userId, username: host.username, avatarUrl: host.avatarUrl, role: "pilot_flying", hasHub: host.hasHub, joinedAt: Date.now() });
   sessions.set(code, s);
@@ -140,11 +143,27 @@ export function attachStream(code: string, userId: number, write: (s: string) =>
   const s = sessions.get(code.toUpperCase());
   if (!s || !s.participants.has(userId)) return null;
   s.streams.set(userId, { write });
-  // Send current state immediately.
+  // Send current state + recent chat immediately.
   try { write(`event: state\ndata: ${JSON.stringify(publicState(s))}\n\n`); } catch { /* */ }
+  try { write(`event: chat-history\ndata: ${JSON.stringify(s.chat)}\n\n`); } catch { /* */ }
   // Tell existing peers someone is ready (so the host can start the WebRTC offer).
   for (const [uid, stream] of s.streams) { if (uid !== userId) { try { stream.write(`event: peer-ready\ndata: ${JSON.stringify({ userId })}\n\n`); } catch { /* */ } } }
   return () => { const cur = sessions.get(code.toUpperCase()); cur?.streams.delete(userId); };
+}
+
+// Post a crew chat message; stores it (capped) and broadcasts to everyone.
+export function postChat(fromUserId: number, text: string): boolean {
+  const code = byUser.get(fromUserId);
+  const s = code ? sessions.get(code) : undefined;
+  if (!s) return false;
+  const p = s.participants.get(fromUserId);
+  if (!p) return false;
+  const msg: ChatMessage = { userId: fromUserId, username: p.username, text: text.slice(0, 1000), at: Date.now() };
+  s.chat.push(msg);
+  if (s.chat.length > 80) s.chat.splice(0, s.chat.length - 80);
+  const payload = `event: chat\ndata: ${JSON.stringify(msg)}\n\n`;
+  for (const stream of s.streams.values()) { try { stream.write(payload); } catch { /* */ } }
+  return true;
 }
 
 // Relay a WebRTC signalling message to a specific peer in the session.

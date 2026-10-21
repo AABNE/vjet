@@ -7,6 +7,7 @@ import { dispatchChat } from "@/lib/puter";
 import { VoiceManager } from "@/lib/cockpitVoice";
 import { Mic, MicOff, Send, Plane, Users, LinkIcon, Loader2, LogOut, Volume2 } from "lucide-react";
 
+interface ChatMsgRow { userId: number; username: string; text: string; at: number }
 interface Participant { userId: number; username: string; avatarUrl: string | null; role: string; hasHub: boolean }
 interface Flight { flightNumber: string; departure: string; arrival: string; aircraft: string; registration: string | null; departureTime: string; flightDate: string; timetableId: number; flightId: number }
 interface State { code: string; hostUserId: number; flight: Flight; participants: Participant[]; you?: number; isHost?: boolean; joined?: boolean }
@@ -23,6 +24,7 @@ export default function Cockpit() {
   const [, navigate] = useLocation();
 
   const [state, setState] = useState<State | null>(null);
+  const [chat, setChat] = useState<ChatMsgRow[]>([]);
   const [error, setError] = useState("");
   const [voiceOn, setVoiceOn] = useState(false);
   const [voiceLive, setVoiceLive] = useState(false);
@@ -69,6 +71,8 @@ export default function Cockpit() {
     es.addEventListener("peer-left", (ev: MessageEvent) => {
       try { const { userId } = JSON.parse(ev.data); voiceRef.current?.removePeer(userId); } catch { /* */ }
     });
+    es.addEventListener("chat-history", (ev: MessageEvent) => { try { setChat(JSON.parse(ev.data)); } catch { /* */ } });
+    es.addEventListener("chat", (ev: MessageEvent) => { try { const m = JSON.parse(ev.data); setChat((c) => [...c, m]); } catch { /* */ } });
     es.addEventListener("ended", () => { setError("The host ended this shared cockpit."); cleanup(false); });
   }
 
@@ -178,6 +182,8 @@ export default function Cockpit() {
           </section>
 
           {isHost && <InvitePanel code={code} />}
+
+          <CrewChat code={code} chat={chat} myId={state.you ?? 0} participants={state.participants} />
         </div>
 
         {/* Right: dispatch chat */}
@@ -248,5 +254,47 @@ function DispatchChat({ flight }: { flight: Flight }) {
         <button type="submit" disabled={sending || !input.trim()} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fb5713] text-white disabled:opacity-40"><Send className="h-4 w-4" /></button>
       </form>
     </aside>
+  );
+}
+
+// Render plain text with clickable links (flight plans, software links, etc.).
+function linkify(text: string) {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((p, i) =>
+    /^https?:\/\//.test(p)
+      ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="break-all underline">{p}</a>
+      : <span key={i}>{p}</span>);
+}
+
+function CrewChat({ code, chat, myId, participants }: { code: string; chat: ChatMsgRow[]; myId: number; participants: Participant[] }) {
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" }); }, [chat]);
+  const avatarOf = (uid: number) => participants.find((p) => p.userId === uid)?.avatarUrl ?? null;
+  async function send() {
+    const t = input.trim(); if (!t || busy) return;
+    setBusy(true); setInput("");
+    try { await apiPost(`/api/cockpit/${code}/chat`, { text: t }); } catch { /* */ } finally { setBusy(false); }
+  }
+  return (
+    <section className="flex h-[340px] flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+      <h2 className="flex items-center gap-2 border-b border-[#f3f4f6] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><Users className="h-4 w-4 text-[#fb5713]" />Crew chat</h2>
+      <div ref={scroller} className="flex-1 space-y-2.5 overflow-y-auto bg-[#f9fafb] p-3">
+        {chat.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-[#9ca3af]">Send flight plans, SimBrief or software links, anything — just between the crew.</p>}
+        {chat.map((m, i) => (
+          <div key={i} className={`flex items-end gap-2 ${m.userId === myId ? "flex-row-reverse" : ""}`}>
+            <Avatar url={avatarOf(m.userId)} name={m.username} size={24} />
+            <div className={`max-w-[82%] rounded-2xl px-3 py-1.5 text-sm leading-snug ${m.userId === myId ? "bg-[#1a1a1a] text-white" : "border border-[#e5e7eb] bg-white text-[#1a1a1a]"}`}>
+              <div className={`font-mono text-[8px] uppercase tracking-wider ${m.userId === myId ? "text-white/50" : "text-[#9ca3af]"}`}>{m.username}</div>
+              <div className="break-words">{linkify(m.text)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-center gap-2 border-t border-[#f3f4f6] bg-white px-3 py-2.5">
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message your crew…" className="h-10 flex-1 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm outline-none focus:border-[#fb5713]" />
+        <button type="submit" disabled={busy || !input.trim()} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fb5713] text-white disabled:opacity-40"><Send className="h-4 w-4" /></button>
+      </form>
+    </section>
   );
 }
