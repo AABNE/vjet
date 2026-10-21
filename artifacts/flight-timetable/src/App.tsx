@@ -304,6 +304,21 @@ function Layout({ children }: { children: React.ReactNode }) {
   // Show tutorial only after password is set (if needed), and only once
   const needsTutorial = !needsPasswordChange && !pilot.hasSeenTutorial && !tutDone;
 
+  // Shared cockpit: full-width, no sidebar — just the flight and a leave button
+  // (the page itself provides the Leave control).
+  if (path.startsWith("/cockpit/")) {
+    return (
+      <div className="min-h-[100dvh] bg-[#f9fafb] text-[#1a1a1a]">
+        <header className="sticky top-0 z-30 flex h-[64px] items-center border-b border-[#e5e7eb] bg-white/90 px-4 backdrop-blur">
+          <Link href="/timetable" className="flex items-center gap-3"><VJetstarLogo height={26} /></Link>
+        </header>
+        <main className="px-4 py-7 md:px-8">
+          <div key={path} className="vj-page">{children}</div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] bg-[#f9fafb] text-[#1a1a1a]">
       {needsPasswordChange && <ForcePasswordModal onDone={() => setPwDone(true)} />}
