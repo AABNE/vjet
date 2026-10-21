@@ -155,7 +155,7 @@ export default function Cockpit() {
                   {isHost && (
                     <select value={p.role} onChange={(e) => setRole(p.userId, e.target.value)}
                       className="rounded-lg border border-[#e5e7eb] bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] outline-none">
-                      {ROLE_ORDER.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                      {ROLE_ORDER.filter((r) => r !== "flap_operator" || p.role === "flap_operator").map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                     </select>
                   )}
                 </div>
