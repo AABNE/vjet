@@ -10,6 +10,7 @@ import recruitmentRouter from "./recruitment";
 import dispatchRouter from "./dispatch";
 import notificationsRouter from "./notifications";
 import opsRouter from "./ops";
+import cockpitRouter from "./cockpit";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(trackerRouter);
 router.use(dispatchRouter);
 router.use(notificationsRouter);
 router.use(opsRouter);
+router.use(cockpitRouter);
 
 export default router;

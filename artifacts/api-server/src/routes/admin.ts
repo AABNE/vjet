@@ -69,6 +69,15 @@ router.get("/admin/flights", async (req, res): Promise<void> => {
   res.json(GetAdminFlightsResponse.parse(result));
 });
 
+// Avatars for the admin list (kept separate from the zod-validated users list).
+router.get("/admin/avatars", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const users = await db.select().from(usersTable);
+  const map: Record<number, string> = {};
+  for (const u of users) if (u.avatarUrl) map[u.id] = u.avatarUrl;
+  res.json({ avatars: map });
+});
+
 router.get("/admin/users", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
 

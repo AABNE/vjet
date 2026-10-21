@@ -29,6 +29,7 @@ import MaintenanceOps from "@/pages/maintenance-ops";
 import AiModels from "@/pages/ai-models";
 import Fleet from "@/pages/fleet";
 import Personalisation from "@/pages/personalisation";
+import Cockpit from "@/pages/cockpit";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -439,6 +440,7 @@ function Router() {
         <Route path="/ai-models" component={AiModels} />
         <Route path="/fleet" component={Fleet} />
         <Route path="/personalisation" component={Personalisation} />
+        <Route path="/cockpit/:code" component={Cockpit} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>

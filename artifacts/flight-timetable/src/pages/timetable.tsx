@@ -3,9 +3,9 @@ import { getGetTimetableQueryKey, useGetTimetable, useStartFlight, useFinishFlig
 import { useAuth } from "@/components/auth-provider";
 import { useSimLink } from "@/hooks/useSimLink";
 import { useHubStatus } from "@/hooks/useHubStatus";
-import { apiGet } from "@/lib/api";
-import { AlertTriangle, ArrowRight, Clock3, ExternalLink, Plane, Radio, RotateCw, Wind } from "lucide-react";
-import { Link } from "wouter";
+import { apiGet, apiPost } from "@/lib/api";
+import { AlertTriangle, ArrowRight, Clock3, ExternalLink, Plane, Radio, RotateCw, Wind, Users } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 interface WeatherView { icao: string; iata: string | null; freshness: string; metarRaw: string | null; parsed: { windDir: string | null; windKt: number | null; gustKt: number | null; visibility: string | null; qnh: string | null; wx: string | null } }
 const WX_DOT: Record<string, string> = { current: "bg-emerald-500", stale: "bg-amber-500", unavailable: "bg-[#d1d5db]" };
@@ -116,6 +116,14 @@ export default function Timetable() {
   const { isApp, connected, position } = useSimLink();
   const hub = useHubStatus();
   const hubConnected = hub.data?.connected ?? false;
+  const [, navigate] = useLocation();
+  const [cockpitBusy, setCockpitBusy] = useState<number | null>(null);
+  async function startCockpit(timetableId: number) {
+    setCockpitBusy(timetableId);
+    try { const r = await apiPost<{ code: string }>("/api/cockpit/create", { timetableId }); navigate(`/cockpit/${r.code}`); }
+    catch (e: any) { window.alert(e?.message || "Couldn't start a shared cockpit."); }
+    finally { setCockpitBusy(null); }
+  }
   const moving = (position?.groundSpeedKt ?? 0) > 1;
   const autoMode = Boolean(isApp && connected);
 
@@ -285,6 +293,11 @@ export default function Timetable() {
                           {isAuto ? "Start now" : "Start flight"}
                         </button>
                       )}
+                      <button onClick={() => startCockpit(entry.id)} disabled={cockpitBusy === entry.id || !hubConnected}
+                        title={hubConnected ? "Fly this with another pilot — shared cockpit + voice" : "Open the pilot hub to host a shared cockpit"}
+                        className="flex items-center gap-1.5 rounded-xl border border-[#e5e7eb] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] transition hover:border-[#fb5713]/40 hover:text-[#fb5713] disabled:opacity-50">
+                        <Users className="h-3.5 w-3.5" />{cockpitBusy === entry.id ? "…" : "Shared cockpit"}
+                      </button>
                       <button data-testid={`button-remove-entry-${entry.id}`} disabled={remove.isPending}
                         onClick={() => { if (window.confirm(`Remove ${entry.flight.flightNumber}?`)) remove.mutate({ id: entry.id }); }}
                         className="rounded-xl border border-[#e5e7eb] px-3 py-2 text-[10px] font-bold uppercase text-[#6b7280] transition hover:border-red-200 hover:text-red-600">

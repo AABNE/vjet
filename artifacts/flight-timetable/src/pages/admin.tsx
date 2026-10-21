@@ -1,7 +1,9 @@
 
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
+import { Avatar } from "@/components/Avatar";
+import { apiGet } from "@/lib/api";
 import {
   getGetAdminFlightsQueryKey,
   getGetAdminUsersQueryKey,
@@ -53,6 +55,11 @@ export default function Admin() {
       refetchOnMount: "always",
     },
   });
+
+  const avatarsQ = useQuery<{ avatars: Record<number, string> }>({
+    queryKey: ["admin-avatars"], queryFn: () => apiGet("/api/admin/avatars"), retry: false,
+  });
+  const avatars = avatarsQ.data?.avatars ?? {};
 
   const flightsQ = useGetAdminFlights({
     query: {
@@ -619,6 +626,7 @@ export default function Admin() {
             <PilotRow
               key={p.id}
               pilot={p}
+              avatarUrl={avatars[p.id]}
               onSave={(id, data) => update.mutate({ id, data })}
               onDelete={(id) => {
                 if (window.confirm(`Remove pilot ${p.username}?`)) {
@@ -720,11 +728,13 @@ export default function Admin() {
 
 function PilotRow({
   pilot,
+  avatarUrl,
   onSave,
   onDelete,
   busy,
 }: {
   pilot: any;
+  avatarUrl?: string;
   onSave: (id: number, data: any) => void;
   onDelete: (id: number) => void;
   busy: boolean;
@@ -755,23 +765,19 @@ function PilotRow({
       className="border-b border-[#f3f4f6] p-5 last:border-0"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div
-            className="flex items-center gap-2 font-semibold text-[#1a1a1a]"
-            data-testid={`text-pilot-name-${pilot.id}`}
-          >
-            {pilot.username}
-
-            {pilot.isAdmin && (
-              <span className="rounded-full bg-[#fb5713] px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest text-white">
-                Admin
-              </span>
-            )}
-          </div>
-
-          <div className="mt-1 font-mono text-[9px] uppercase text-[#9ca3af]">
-            ID {pilot.id} · SimBrief:{" "}
-            {pilot.simbriefUsername || "not set"}
+        <div className="flex items-center gap-3">
+          <Avatar url={avatarUrl} name={pilot.username} size={40} />
+          <div>
+            <div
+              className="flex items-center gap-2 font-semibold text-[#1a1a1a]"
+              data-testid={`text-pilot-name-${pilot.id}`}
+            >
+              {pilot.username}
+              {pilot.isAdmin && <span className="font-mono text-[9px] uppercase tracking-wider text-[#fb5713]">· Admin</span>}
+            </div>
+            <div className="mt-1 font-mono text-[9px] uppercase text-[#9ca3af]">
+              ID {pilot.id} · SimBrief: {pilot.simbriefUsername || "not set"}
+            </div>
           </div>
         </div>
 
