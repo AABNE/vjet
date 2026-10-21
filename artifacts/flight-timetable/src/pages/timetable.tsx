@@ -294,9 +294,9 @@ export default function Timetable() {
                         </button>
                       )}
                       <button onClick={() => startCockpit(entry.id)} disabled={cockpitBusy === entry.id || !hubConnected}
-                        title={hubConnected ? "Fly this with another pilot — shared cockpit + voice" : "Open the pilot hub to host a shared cockpit"}
-                        className="flex items-center gap-1.5 rounded-xl border border-[#e5e7eb] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] transition hover:border-[#fb5713]/40 hover:text-[#fb5713] disabled:opacity-50">
-                        <Users className="h-3.5 w-3.5" />{cockpitBusy === entry.id ? "…" : "Shared cockpit"}
+                        title={hubConnected ? "Fly this with another pilot — shared cockpit + voice" : "Open the pilot hub to fly with a copilot"}
+                        className="flex items-center gap-1.5 rounded-xl border border-[#fb5713]/30 bg-[#fff7ed] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#fb5713] transition hover:bg-[#ffe9d6] disabled:opacity-50">
+                        <Users className="h-3.5 w-3.5" />{cockpitBusy === entry.id ? "…" : "Fly with copilot"}
                       </button>
                       <button data-testid={`button-remove-entry-${entry.id}`} disabled={remove.isPending}
                         onClick={() => { if (window.confirm(`Remove ${entry.flight.flightNumber}?`)) remove.mutate({ id: entry.id }); }}
