@@ -249,8 +249,13 @@ router.post("/pilot/avatar", async (req: Request, res: Response): Promise<void> 
   const userId = (req.session as any)?.userId;
   if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
   const raw = String(req.body?.url ?? "").trim();
-  if (raw && !/^https:\/\/[^\s]+$/i.test(raw)) { res.status(400).json({ error: "Enter a valid https image URL." }); return; }
-  const url = raw ? raw.slice(0, 500) : null;
+  const isHttps = /^https:\/\/[^\s]+$/i.test(raw);
+  const isDataImg = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(raw);
+  if (raw) {
+    if (!isHttps && !isDataImg) { res.status(400).json({ error: "Upload an image or enter a valid https image URL." }); return; }
+    if (isDataImg && raw.length > 120_000) { res.status(400).json({ error: "That image is too large — it should be a small photo (under ~80KB). Try a smaller one." }); return; }
+  }
+  const url = raw ? (isDataImg ? raw : raw.slice(0, 500)) : null;
   await db.update(usersTable).set({ avatarUrl: url }).where(eq(usersTable.id, userId));
   res.json({ ok: true, avatarUrl: url });
 });

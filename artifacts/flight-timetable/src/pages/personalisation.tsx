@@ -1,10 +1,37 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
 import { useProfile } from "@/hooks/useProfile";
 import { Avatar } from "@/components/Avatar";
 import { apiPost } from "@/lib/api";
-import { Check, Loader2, MessageCircle, Trash2 } from "lucide-react";
+import { Check, Loader2, MessageCircle, Trash2, Upload } from "lucide-react";
+
+// Resize/crop an uploaded image to a small square and return a compact data URL
+// (webp if supported, else jpeg) — a few KB, so it stores fine in the DB.
+function resizeToDataUrl(file: File, size = 128): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That doesn't look like an image."));
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas unavailable.")); return; }
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        let out = canvas.toDataURL("image/webp", 0.85);
+        if (!out.startsWith("data:image/webp")) out = canvas.toDataURL("image/jpeg", 0.85);
+        resolve(out);
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function Personalisation() {
   const { user } = useAuth();
@@ -13,6 +40,7 @@ export default function Personalisation() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const current = profile.data?.avatarUrl ?? null;
 
@@ -26,6 +54,19 @@ export default function Personalisation() {
       if (action === "url") setUrl("");
     } catch (e: any) { setErr(e?.message || "Could not update your picture."); }
     finally { setBusy(null); }
+  }
+
+  async function onUpload(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setErr("Please choose an image file."); return; }
+    setErr(""); setBusy("upload");
+    try {
+      const dataUrl = await resizeToDataUrl(file, 128);
+      await apiPost("/api/pilot/avatar", { url: dataUrl });
+      await profile.refetch();
+      qc.invalidateQueries({ queryKey: ["profile"] });
+    } catch (e: any) { setErr(e?.message || "Couldn't upload that photo."); }
+    finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }
   }
 
   return (
@@ -46,6 +87,15 @@ export default function Personalisation() {
         </div>
         <div className="space-y-5 p-6">
           <div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onUpload(e.target.files?.[0])} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy !== null}
+              className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#e04d0e] disabled:opacity-50">
+              {busy === "upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Upload a photo
+            </button>
+            <p className="mt-1.5 text-[11px] text-[#9ca3af]">Pick any photo — it's cropped to a small square on your device before saving.</p>
+          </div>
+
+          <div className="border-t border-[#f3f4f6] pt-5">
             <button onClick={() => save("discord")} disabled={!profile.data?.discordLinked || busy !== null}
               className="flex items-center gap-2 rounded-xl bg-[#5865F2] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#4752c4] disabled:opacity-50">
               {busy === "discord" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Use my Discord picture
