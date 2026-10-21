@@ -4,9 +4,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
-import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio, FileText, Gauge, Bot, Wrench, PanelLeft } from "lucide-react";
+import { CalendarDays, Plane, ClipboardList, Settings2, ShieldCheck, LogOut, Download, KeyRound, Check, ArrowRight, X, Radar, Palette, Radio, FileText, Gauge, Bot, Wrench, PanelLeft, Sparkles, ChevronDown } from "lucide-react";
 import { VJetstarLogo } from "@/components/VJetstarLogo";
-import { useEffect, useState } from "react";
+import { Avatar } from "@/components/Avatar";
+import { useProfile } from "@/hooks/useProfile";
+import { useEffect, useState, useRef } from "react";
 import { useIsDesktopApp } from "@/hooks/useSimLink";
 import { AutoFlightTimer } from "@/components/AutoFlightTimer";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -26,6 +28,7 @@ import ControlRoom from "@/pages/control-room";
 import MaintenanceOps from "@/pages/maintenance-ops";
 import AiModels from "@/pages/ai-models";
 import Fleet from "@/pages/fleet";
+import Personalisation from "@/pages/personalisation";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 15_000 } } });
@@ -36,8 +39,13 @@ const navItems = [
   { href: "/dispatch",   label: "Dispatch",          icon: Radio },
   { href: "/paperwork",  label: "My paperwork",      icon: FileText },
   { href: "/liveries",   label: "Liveries",          icon: Palette },
-  { href: "/logs",       label: "Flight records",    icon: ClipboardList },
-  { href: "/settings",   label: "Settings",          icon: Settings2 },
+];
+
+// These live under the profile menu (top-right), not the sidebar.
+const profileMenu = [
+  { href: "/settings",        label: "Settings",        icon: Settings2 },
+  { href: "/logs",            label: "Flight records",  icon: ClipboardList },
+  { href: "/personalisation", label: "Personalisation", icon: Sparkles },
 ];
 
 // Only shown when the hub runs inside the vJetstar Sim Link desktop app.
@@ -237,12 +245,10 @@ function Layout({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const isApp = useIsDesktopApp();
   // In the app: show Live map after Available routes (and hide Software — you're
-  // already in the app). On the website: show Software before Settings, no Live map.
-  const settingsItem = navItems[navItems.length - 1];
-  const beforeSettings = navItems.slice(0, navItems.length - 1);
+  // already in the app). On the website: show Software too.
   const displayedNav = isApp
     ? [navItems[0], navItems[1], ...appOnlyNavItems, ...navItems.slice(2)]
-    : [...beforeSettings, ...webOnlyNavItems, settingsItem];
+    : [...navItems, ...webOnlyNavItems];
   const logout = useLogout({
     mutation: {
       onSuccess: () => {
@@ -260,6 +266,18 @@ function Layout({ children }: { children: React.ReactNode }) {
   // Collapsible sidebar (slides away); preference persisted per browser.
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem("vj-nav") !== "0"; } catch { return true; } });
   useEffect(() => { try { localStorage.setItem("vj-nav", navOpen ? "1" : "0"); } catch { /* ignore */ } }, [navOpen]);
+
+  // Profile dropdown (top-right): holds Settings, Flight records, Personalisation.
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement | null>(null);
+  const profile = useProfile();
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onDoc = (e: MouseEvent) => { if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [profileOpen]);
+  useEffect(() => { setProfileOpen(false); }, [path]);
 
   const publicPage = path === "/login";
   useEffect(() => {
@@ -307,18 +325,45 @@ function Layout({ children }: { children: React.ReactNode }) {
             <span className="h-1.5 w-1.5 rounded-full bg-[#fb5713]" /> Ops ready
           </div>
           <NotificationBell />
-          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] font-black uppercase text-[#1a1a1a]" data-testid="text-user-avatar">
-            {user.username.slice(0, 1)}
-          </div>
-          <div className="hidden min-w-[80px] md:block">
-            <div className="text-sm font-bold text-[#1a1a1a]" data-testid="text-username">{user.username}</div>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{user.isAdmin ? "Admin" : (pilot.simulatorVersion || "Pilot")}</div>
+          <div className="relative" ref={profileRef}>
+            <button onClick={() => setProfileOpen((o) => !o)} data-testid="button-profile-menu"
+              className="flex items-center gap-2 rounded-full border border-transparent p-0.5 pr-2 transition hover:border-[#e5e7eb] hover:bg-[#f9fafb]">
+              <Avatar url={profile.data?.avatarUrl} name={user.username} size={36} />
+              <div className="hidden min-w-[70px] text-left md:block">
+                <div className="text-sm font-bold leading-tight text-[#1a1a1a]" data-testid="text-username">{user.username}</div>
+                <div className="font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{user.isAdmin ? "Admin" : (pilot.simulatorVersion || "Pilot")}</div>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-[#9ca3af] transition-transform ${profileOpen ? "rotate-180" : ""}`} />
+            </button>
+            {profileOpen && (
+              <div className="vj-fade absolute right-0 top-[calc(100%+8px)] z-40 w-56 overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-xl">
+                <div className="flex items-center gap-3 border-b border-[#f3f4f6] px-4 py-3">
+                  <Avatar url={profile.data?.avatarUrl} name={user.username} size={40} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-[#1a1a1a]">{user.username}</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">{user.isAdmin ? "Admin" : (pilot.simulatorVersion || "Pilot")}</div>
+                  </div>
+                </div>
+                <div className="p-1.5">
+                  {profileMenu.map(({ href, label, icon: Icon }) => (
+                    <Link key={href} href={href} onClick={() => setProfileOpen(false)}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${path === href ? "bg-[#fff7ed] text-[#fb5713]" : "text-[#374151] hover:bg-[#f3f4f6]"}`}>
+                      <Icon className="h-4 w-4" />{label}
+                    </Link>
+                  ))}
+                  <button onClick={() => { setProfileOpen(false); logout.mutate(); }} disabled={logout.isPending}
+                    className="mt-1 flex w-full items-center gap-3 rounded-xl border-t border-[#f3f4f6] px-3 py-2.5 text-sm font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-red-600">
+                    <LogOut className="h-4 w-4" />{logout.isPending ? "Signing out…" : "Sign out"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       <div className="mx-auto flex max-w-[1500px] flex-col md:min-h-[calc(100dvh-64px)] md:flex-row">
-        <aside className={`${navOpen ? "flex" : "hidden md:flex"} shrink-0 flex-row gap-1 overflow-x-auto border-b border-[#e5e7eb] bg-white p-2 transition-[width,opacity,padding] duration-300 ease-out md:flex-col md:gap-1 md:overflow-hidden md:border-b-0 md:border-r md:p-4 ${navOpen ? "md:w-[220px] md:opacity-100" : "md:w-0 md:min-w-0 md:p-0 md:opacity-0 md:border-r-0 md:pointer-events-none"}`}>
+        <aside className={`${navOpen ? "flex" : "hidden md:flex"} shrink-0 flex-row gap-1 overflow-x-auto border-b border-[#e5e7eb] bg-white p-2 transition-[width,opacity,padding] duration-300 ease-out md:sticky md:top-[64px] md:h-[calc(100dvh-64px)] md:flex-col md:gap-1 md:self-start md:overflow-x-hidden md:overflow-y-auto md:border-b-0 md:border-r md:p-4 ${navOpen ? "md:w-[220px] md:opacity-100" : "md:w-0 md:min-w-0 md:p-0 md:opacity-0 md:border-r-0 md:pointer-events-none"}`}>
           <div className="hidden px-3 pb-2 pt-3 font-mono text-[9px] font-bold uppercase tracking-[.24em] text-[#9ca3af] md:block">Flight deck</div>
           {displayedNav.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-testid={`link-nav-${href.slice(1)}`}
@@ -396,6 +441,7 @@ function Router() {
         <Route path="/maintenance-ops" component={MaintenanceOps} />
         <Route path="/ai-models" component={AiModels} />
         <Route path="/fleet" component={Fleet} />
+        <Route path="/personalisation" component={Personalisation} />
         <Route path="/settings" component={Settings} />
         <Route path="/admin"    component={Admin} />
         <Route path="/"><Timetable /></Route>

@@ -218,7 +218,10 @@ router.post("/pilot/discord", async (req: Request, res: Response): Promise<void>
     const [taken] = await db.select().from(usersTable).where(eq(usersTable.discordId, du.id));
     if (taken && taken.id !== userId) { res.status(409).json({ error: "That Discord account is already linked to another pilot." }); return; }
 
-    await db.update(usersTable).set({ discordId: du.id }).where(eq(usersTable.id, userId));
+    const [me] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    const patch: { discordId: string; avatarUrl?: string } = { discordId: du.id };
+    if (!me?.avatarUrl) patch.avatarUrl = avatarUrl(du); // default profile pic from Discord
+    await db.update(usersTable).set(patch).where(eq(usersTable.id, userId));
     res.json({ ok: true, id: du.id, username: du.username, globalName: du.global_name || du.username, avatar: avatarUrl(du) });
   } catch {
     res.status(502).json({ error: "Discord linking failed. Please try again." });
@@ -231,6 +234,43 @@ router.delete("/pilot/discord", async (req: Request, res: Response): Promise<voi
   if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
   await db.update(usersTable).set({ discordId: null }).where(eq(usersTable.id, userId));
   res.json({ ok: true });
+});
+
+// ── GET /api/pilot/profile — avatar + identity for the header/menu ────────────
+router.get("/pilot/profile", async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  res.json({ username: u?.username ?? null, avatarUrl: u?.avatarUrl ?? null, discordLinked: !!u?.discordId });
+});
+
+// ── POST /api/pilot/avatar — set a profile picture by URL ("" clears it) ──────
+router.post("/pilot/avatar", async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const raw = String(req.body?.url ?? "").trim();
+  if (raw && !/^https:\/\/[^\s]+$/i.test(raw)) { res.status(400).json({ error: "Enter a valid https image URL." }); return; }
+  const url = raw ? raw.slice(0, 500) : null;
+  await db.update(usersTable).set({ avatarUrl: url }).where(eq(usersTable.id, userId));
+  res.json({ ok: true, avatarUrl: url });
+});
+
+// ── POST /api/pilot/avatar/discord — use the linked Discord picture ───────────
+router.post("/pilot/avatar/discord", async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const token = process.env["DISCORD_BOT_TOKEN"];
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!u?.discordId) { res.status(400).json({ error: "Link your Discord first (in Settings)." }); return; }
+  if (!token) { res.status(503).json({ error: "Discord isn't configured on the server." }); return; }
+  try {
+    const r = await fetch(`${DISCORD_API}/users/${u.discordId}`, { headers: botHeaders(token) });
+    if (!r.ok) { res.status(502).json({ error: "Couldn't fetch your Discord picture." }); return; }
+    const du = (await r.json()) as { id: string; avatar?: string | null };
+    const url = avatarUrl(du);
+    await db.update(usersTable).set({ avatarUrl: url }).where(eq(usersTable.id, userId));
+    res.json({ ok: true, avatarUrl: url });
+  } catch { res.status(502).json({ error: "Couldn't fetch your Discord picture." }); }
 });
 
 // ── POST /api/apply ──────────────────────────────────────────────────────────

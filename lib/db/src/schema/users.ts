@@ -21,6 +21,8 @@ export const usersTable = pgTable("users", {
   volantaUsername: text("volanta_username"),
   // Discord account the pilot signed up with — used to DM their ops notifications.
   discordId: text("discord_id"),
+  // Profile picture URL (Discord avatar or a custom image URL).
+  avatarUrl: text("avatar_url"),
   // When true, Available routes only shows flights departing where the pilot's
   // last flight landed (realistic sequential routing).
   routeContinuity: boolean("route_continuity").notNull().default(false),
