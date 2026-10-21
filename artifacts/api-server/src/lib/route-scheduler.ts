@@ -31,11 +31,12 @@ const CUTOFF_MIN = 30;        // hide/prune this long before departure
 const PLAN_DAYS = 3;          // today + next 2 days
 const TICK_MS = 10 * 60 * 1000;
 
-const DAY_START_MIN = 6 * 60;   // earliest first departure (origin-local)
-const LAST_DEP_MIN = 22 * 60;   // latest departure of the day (origin-local)
+// 24/7 operation: departures can happen at any hour, night the same as day.
+const DAY_START_MIN = 0;           // earliest first departure (origin-local)
+const LAST_DEP_MIN = 24 * 60 - 5;  // latest departure of the day (23:55 local)
 const NARROW_TURN_MS = 30 * 60_000;
 const WIDE_TURN_MS = 60 * 60_000;
-const NARROW_MAX_SECTORS = 6;
+const NARROW_MAX_SECTORS = 8;
 const WIDE_MAX_SECTORS = 2;
 const WIDEBODY = new Set(["B788"]);
 const SPARE_FRACTION = 0.2; // share of each fleet type kept idle as spares
@@ -101,7 +102,8 @@ function dayCatalog(wd: number): Record<string, Record<string, Sector[]>> {
   const byType: Record<string, Record<string, Sector[]>> = {};
   for (const p of ROUTE_PAIRS) {
     if (!p.days.includes(wd)) continue;
-    const window = p.window ?? [6, 21];
+    // 24/7: every route may operate at any hour (no daytime-only windows).
+    const window: [number, number] = [0, 24];
     for (const [from, to] of [[p.a, p.b], [p.b, p.a]] as [string, string][]) {
       ((byType[p.ac] ??= {})[from] ??= []).push({ from, to, durationMin: p.durationMin, window });
     }
@@ -150,7 +152,11 @@ export function computeDesiredFlights(now: Date = new Date(), fleet: Record<stri
         let prev = "";
         const startTz = AIRPORT_TZ[cur];
         if (!startTz) return;
-        const startMin = DAY_START_MIN + (ti % 4) * 40; // stagger first departures
+        // Spread first departures across the whole 24h (plus a small per-type
+        // offset) so the network has flights airborne day and night, rather
+        // than every tail launching in the morning.
+        const phase = (type.charCodeAt(0) * 37) % 90;
+        const startMin = (DAY_START_MIN + Math.round((ti / tails.length) * 24 * 60) + phase) % (24 * 60);
         let clock = zonedToUtc(date.y, date.mo, date.d, Math.floor(startMin / 60), startMin % 60, startTz).getTime();
 
         for (let leg = 0; leg < maxSectors; leg++) {
