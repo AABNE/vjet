@@ -17,6 +17,8 @@ import {
   AlertTriangle,
   Check,
   Clock3,
+  Flag,
+  MessageSquare,
   Plane,
   Plus,
   ShieldCheck,
@@ -463,6 +465,12 @@ export default function Admin() {
         </section>
       )}
 
+      {/* Pilot reports */}
+      <ReportsPanel />
+
+      {/* Live shared cockpits + crew chats */}
+      <CockpitChatsPanel />
+
       {/* Pilot accounts */}
       <section className="mt-7 overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
         <div className="flex items-center gap-3 border-b border-[#f3f4f6] px-6 py-5">
@@ -865,5 +873,143 @@ function PilotRow({
         </button>
       </div>
     </div>
+  );
+}
+
+// ---- Pilot reports (admins triage reports filed by pilots) ----
+type ReportUser = { id: number; username: string; avatarUrl: string | null };
+type Report = {
+  id: number; reason: string; detail: string; context: string;
+  status: "open" | "resolved" | "dismissed"; createdAt: string; resolvedAt: string | null;
+  reporter: ReportUser; reported: ReportUser;
+};
+
+function ReportsPanel() {
+  const q = useQuery<{ reports: Report[] }>({
+    queryKey: ["admin-reports"], queryFn: () => apiGet("/api/admin/reports"),
+    retry: false, refetchInterval: 20000,
+  });
+  const [busy, setBusy] = useState<number | null>(null);
+  const reports = q.data?.reports ?? [];
+  const open = reports.filter((r) => r.status === "open");
+
+  async function resolve(id: number, action: "strike" | "dismiss") {
+    setBusy(id);
+    try { await apiPost(`/api/admin/reports/${id}/resolve`, { action }); await q.refetch(); }
+    finally { setBusy(null); }
+  }
+
+  return (
+    <section className="mt-7 overflow-hidden rounded-2xl border border-red-200 bg-white">
+      <div className="flex items-center justify-between border-b border-red-100 bg-red-50/60 px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500 text-white"><Flag className="h-5 w-5" /></div>
+          <div>
+            <h2 className="font-bold uppercase tracking-tight text-red-900">Pilot reports</h2>
+            <p className="text-[10px] text-red-500">{open.length} open · {reports.length} total — strike records an infraction, dismiss closes it.</p>
+          </div>
+        </div>
+        <button onClick={() => q.refetch()} className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-red-600 hover:bg-red-50">Refresh</button>
+      </div>
+
+      {reports.length === 0 ? (
+        <p className="px-6 py-8 text-center text-sm text-[#9ca3af]">No reports. All quiet.</p>
+      ) : (
+        <div className="divide-y divide-[#f3f4f6]">
+          {reports.map((r) => (
+            <div key={r.id} className={`flex flex-wrap items-start gap-4 px-6 py-4 ${r.status !== "open" ? "opacity-55" : ""}`}>
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <Avatar url={r.reported.avatarUrl} name={r.reported.username} size={38} />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-bold text-[#1a1a1a]">{r.reported.username}</span>
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-600">{r.reason}</span>
+                    {r.status !== "open" && <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#6b7280]">{r.status}</span>}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-[#9ca3af]">
+                    by {r.reporter.username}{r.context ? ` · ${r.context}` : ""} · {new Date(r.createdAt).toLocaleString()}
+                  </div>
+                  {r.detail && <p className="mt-1.5 rounded-lg bg-[#f9fafb] px-3 py-2 text-xs text-[#374151]">{r.detail}</p>}
+                </div>
+              </div>
+              {r.status === "open" && (
+                <div className="flex gap-2">
+                  <button onClick={() => resolve(r.id, "strike")} disabled={busy === r.id}
+                    className="rounded-lg bg-red-500 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-600 disabled:opacity-50">Strike</button>
+                  <button onClick={() => resolve(r.id, "dismiss")} disabled={busy === r.id}
+                    className="rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50">Dismiss</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---- Live shared cockpits + crew chat transcripts ----
+type CockpitChatMsg = { userId: number; username: string; text: string; at: number };
+type CockpitParticipant = { userId: number; username: string; avatarUrl: string | null; role: string; hasHub: boolean };
+type CockpitSession = {
+  code: string; hostUserId: number; createdAt: number;
+  flight: { flightNumber: string; departure: string; arrival: string; aircraft: string };
+  participants: CockpitParticipant[]; chat: CockpitChatMsg[];
+};
+
+function CockpitChatsPanel() {
+  const q = useQuery<{ sessions: CockpitSession[] }>({
+    queryKey: ["admin-cockpits"], queryFn: () => apiGet("/api/admin/cockpits"),
+    retry: false, refetchInterval: 8000,
+  });
+  const sessions = q.data?.sessions ?? [];
+
+  return (
+    <section className="mt-7 overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+      <div className="flex items-center justify-between border-b border-[#f3f4f6] px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f3f4f6]"><MessageSquare className="h-5 w-5 text-[#6b7280]" /></div>
+          <div>
+            <h2 className="font-bold uppercase tracking-tight text-[#1a1a1a]">Shared cockpits</h2>
+            <p className="text-[10px] text-[#9ca3af]">{sessions.length} live — crew, roles and chat transcripts. Live sessions only.</p>
+          </div>
+        </div>
+        <button onClick={() => q.refetch()} className="rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-[10px] font-bold uppercase text-[#6b7280] hover:bg-[#f3f4f6]">Refresh</button>
+      </div>
+
+      {sessions.length === 0 ? (
+        <p className="px-6 py-8 text-center text-sm text-[#9ca3af]">No shared cockpits active right now.</p>
+      ) : (
+        <div className="space-y-5 p-6">
+          {sessions.map((s) => (
+            <div key={s.code} className="overflow-hidden rounded-2xl border border-[#e5e7eb]">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-[#f9fafb] px-4 py-3">
+                <span className="font-mono text-xs font-black text-[#fb5713]">{s.code}</span>
+                <span className="text-sm font-bold text-[#1a1a1a]">{s.flight.flightNumber}</span>
+                <span className="text-xs text-[#6b7280]">{s.flight.departure}→{s.flight.arrival} · {s.flight.aircraft}</span>
+                <span className="ml-auto flex items-center gap-2">
+                  {s.participants.map((p) => (
+                    <span key={p.userId} className="flex items-center gap-1.5 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-[#374151] ring-1 ring-[#e5e7eb]">
+                      <Avatar url={p.avatarUrl} name={p.username} size={16} />{p.username}
+                      <span className="font-mono text-[8px] uppercase tracking-wider text-[#9ca3af]">{p.role.replace("pilot_", "").replace("_", " ")}</span>
+                    </span>
+                  ))}
+                </span>
+              </div>
+              <div className="max-h-56 space-y-1.5 overflow-y-auto px-4 py-3">
+                {s.chat.length === 0 ? (
+                  <p className="py-3 text-center text-[11px] text-[#9ca3af]">No crew messages yet.</p>
+                ) : s.chat.map((m, i) => (
+                  <div key={i} className="text-sm">
+                    <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-[#9ca3af]">{m.username}</span>
+                    <span className="ml-2 break-words text-[#1a1a1a]">{m.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

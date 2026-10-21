@@ -327,6 +327,19 @@ export async function initDb(): Promise<void> {
         "fetched_at"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         "ok"            BOOLEAN NOT NULL DEFAULT TRUE
       );
+
+      CREATE TABLE IF NOT EXISTS "user_reports" (
+        "id"           SERIAL PRIMARY KEY,
+        "reporter_id"  INTEGER NOT NULL REFERENCES "users"("id"),
+        "reported_id"  INTEGER NOT NULL REFERENCES "users"("id"),
+        "reason"       TEXT NOT NULL,
+        "detail"       TEXT NOT NULL DEFAULT '',
+        "context"      TEXT NOT NULL DEFAULT '',
+        "status"       TEXT NOT NULL DEFAULT 'open',
+        "created_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "resolved_at"  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_user_reports_status" ON "user_reports" ("status", "created_at");
     `);
 
     // Seed a virtual fleet (plausible Jetstar-style registrations) if empty.

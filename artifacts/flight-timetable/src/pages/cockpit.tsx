@@ -5,7 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { apiGet, apiPost } from "@/lib/api";
 import { dispatchChat } from "@/lib/puter";
 import { VoiceManager } from "@/lib/cockpitVoice";
-import { Mic, MicOff, Send, Plane, Users, LinkIcon, Loader2, LogOut, Volume2 } from "lucide-react";
+import { Mic, MicOff, Send, Plane, Users, LinkIcon, Loader2, LogOut, Volume2, Flag, X } from "lucide-react";
 
 interface ChatMsgRow { userId: number; username: string; text: string; at: number }
 interface Participant { userId: number; username: string; avatarUrl: string | null; role: string; hasHub: boolean }
@@ -158,6 +158,9 @@ export default function Cockpit() {
                       {ROLE_ORDER.filter((r) => r !== "flap_operator" || p.role === "flap_operator").map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                     </select>
                   )}
+                  {state.you != null && p.userId !== state.you && (
+                    <ReportButton reportedId={p.userId} username={p.username} context={`cockpit ${code}`} />
+                  )}
                 </div>
               ))}
             </div>
@@ -296,5 +299,67 @@ function CrewChat({ code, chat, myId, participants }: { code: string; chat: Chat
         <button type="submit" disabled={busy || !input.trim()} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fb5713] text-white disabled:opacity-40"><Send className="h-4 w-4" /></button>
       </form>
     </section>
+  );
+}
+
+const REPORT_REASONS = ["Abusive language", "Harassment", "Inappropriate content", "Cheating / exploiting", "Spam", "Other"];
+
+function ReportButton({ reportedId, username, context }: { reportedId: number; username: string; context: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState(REPORT_REASONS[0]);
+  const [detail, setDetail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit() {
+    if (busy) return;
+    setBusy(true); setErr("");
+    try {
+      await apiPost("/api/reports", { reportedUserId: reportedId, reason, detail, context });
+      setDone(true);
+      setTimeout(() => { setOpen(false); setDone(false); setDetail(""); }, 1400);
+    } catch (e: any) { setErr(e?.message || "Couldn't send the report."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} title={`Report ${username}`}
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#f3f4f6] text-[#c7ccd4] transition hover:border-red-200 hover:bg-red-50 hover:text-red-500">
+        <Flag className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && setOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-[#1a1a1a]"><Flag className="h-4 w-4 text-red-500" />Report {username}</h3>
+              <button onClick={() => !busy && setOpen(false)} className="text-[#9ca3af] hover:text-[#1a1a1a]"><X className="h-4 w-4" /></button>
+            </div>
+            {done ? (
+              <p className="py-6 text-center text-sm text-emerald-600">Report sent to the admins. Thanks.</p>
+            ) : (
+              <>
+                <label className="mt-4 block font-mono text-[10px] font-bold uppercase tracking-wider text-[#6b7280]">Reason</label>
+                <select value={reason} onChange={(e) => setReason(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none focus:border-[#fb5713]">
+                  {REPORT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <label className="mt-3 block font-mono text-[10px] font-bold uppercase tracking-wider text-[#6b7280]">What happened? (optional)</label>
+                <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} placeholder="Add any detail that helps the admins…"
+                  className="mt-1 w-full resize-none rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm outline-none focus:border-[#fb5713]" />
+                {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
+                <div className="mt-4 flex gap-2">
+                  <button onClick={() => setOpen(false)} disabled={busy} className="flex-1 rounded-xl border border-[#e5e7eb] px-4 py-2.5 text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6]">Cancel</button>
+                  <button onClick={submit} disabled={busy} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-50">
+                    {busy && <Loader2 className="h-4 w-4 animate-spin" />}Send report
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

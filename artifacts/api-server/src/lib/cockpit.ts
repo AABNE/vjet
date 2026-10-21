@@ -176,4 +176,20 @@ export function signal(fromUserId: number, toUserId: number, data: unknown): boo
   try { target.write(`event: signal\ndata: ${JSON.stringify({ from: fromUserId, data })}\n\n`); return true; } catch { return false; }
 }
 
+// Admin view: every live cockpit with its crew and full crew-chat transcript.
+export function listSessionsForAdmin() {
+  return [...sessions.values()]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((s) => ({
+      code: s.code,
+      hostUserId: s.hostUserId,
+      createdAt: s.createdAt,
+      flight: s.flight,
+      participants: [...s.participants.values()]
+        .sort((a, b) => a.joinedAt - b.joinedAt)
+        .map((p) => ({ userId: p.userId, username: p.username, avatarUrl: p.avatarUrl, role: p.role, hasHub: p.hasHub })),
+      chat: s.chat,
+    }));
+}
+
 export { publicState };

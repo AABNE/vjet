@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, timetableTable, flightsTable, eq, ne } from "@workspace/db";
+import { db, usersTable, timetableTable, flightsTable, userReportsTable, eq, ne, desc } from "@workspace/db";
 import { addInfraction, notify } from "../lib/ops";
+import { listSessionsForAdmin } from "../lib/cockpit";
 
 import {
   CreateAdminUserBody,
@@ -340,5 +341,59 @@ router.post("/admin/flagged/:id/reject", async (req, res): Promise<void> => {
 
   // Delete the entry entirely — no hours credited, gone from logs
   await db.delete(timetableTable).where(eq(timetableTable.id, id));
+  res.json({ ok: true });
+});
+
+// Every live shared cockpit, with its crew and full crew-chat transcript.
+router.get("/admin/cockpits", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  res.json({ sessions: listSessionsForAdmin() });
+});
+
+// Pilot reports — newest first, with reporter/reported usernames + avatars.
+router.get("/admin/reports", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const rows = await db.select().from(userReportsTable).orderBy(desc(userReportsTable.createdAt));
+  const users = await db.select().from(usersTable);
+  const byId = new Map(users.map((u) => [u.id, u]));
+
+  res.json({
+    reports: rows.map((r) => {
+      const reporter = byId.get(r.reporterId);
+      const reported = byId.get(r.reportedId);
+      return {
+        id: r.id,
+        reason: r.reason,
+        detail: r.detail,
+        context: r.context,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+        resolvedAt: r.resolvedAt ? r.resolvedAt.toISOString() : null,
+        reporter: { id: r.reporterId, username: reporter?.username ?? "(deleted)", avatarUrl: reporter?.avatarUrl ?? null },
+        reported: { id: r.reportedId, username: reported?.username ?? "(deleted)", avatarUrl: reported?.avatarUrl ?? null },
+      };
+    }),
+  });
+});
+
+// Resolve a report. action "strike" records an infraction against the pilot;
+// "dismiss" just closes it. Both mark it handled.
+router.post("/admin/reports/:id/resolve", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid report ID" }); return; }
+  const action = String(req.body?.action || "dismiss");
+
+  const [report] = await db.select().from(userReportsTable).where(eq(userReportsTable.id, id));
+  if (!report) { res.status(404).json({ error: "Report not found" }); return; }
+
+  if (action === "strike") {
+    await addInfraction(report.reportedId, "reported", `Pilot report upheld: ${report.reason}`);
+  }
+  await db.update(userReportsTable)
+    .set({ status: action === "strike" ? "resolved" : "dismissed", resolvedAt: new Date() })
+    .where(eq(userReportsTable.id, id));
+
   res.json({ ok: true });
 });
