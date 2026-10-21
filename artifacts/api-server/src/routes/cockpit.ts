@@ -8,12 +8,12 @@ import {
 
 const router: IRouter = Router();
 
-async function me(req: Request): Promise<{ id: number; username: string; avatarUrl: string | null; hasHub: boolean } | null> {
+async function me(req: Request): Promise<{ id: number; username: string; avatarUrl: string | null; hasHub: boolean; discordId: string | null } | null> {
   const userId = (req.session as any)?.userId;
   if (!userId) return null;
   const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!u) return null;
-  return { id: u.id, username: u.username, avatarUrl: u.avatarUrl ?? null, hasHub: await hubConnected(u.id) };
+  return { id: u.id, username: u.username, avatarUrl: u.avatarUrl ?? null, hasHub: await hubConnected(u.id), discordId: u.discordId ?? null };
 }
 
 const ROLES: Role[] = ["pilot_flying", "pilot_monitoring", "flap_operator"];
@@ -32,7 +32,7 @@ router.post("/cockpit/create", async (req: Request, res: Response): Promise<void
     departure: f.departure, arrival: f.arrival, aircraft: f.aircraft,
     registration: f.registration ?? null, departureTime: f.departureTime, flightDate: f.flightDate,
   };
-  const s = createSession({ userId: u.id, username: u.username, avatarUrl: u.avatarUrl, hasHub: u.hasHub }, flight);
+  const s = createSession({ userId: u.id, username: u.username, avatarUrl: u.avatarUrl, hasHub: u.hasHub, discordId: u.discordId }, flight);
   res.json({ code: s.code });
 });
 
@@ -64,7 +64,7 @@ router.get("/cockpit/:code", async (req: Request, res: Response): Promise<void> 
 // POST /api/cockpit/:code/join
 router.post("/cockpit/:code/join", async (req: Request, res: Response): Promise<void> => {
   const u = await me(req); if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const r = joinSession(String(req.params.code), { userId: u.id, username: u.username, avatarUrl: u.avatarUrl, hasHub: u.hasHub });
+  const r = joinSession(String(req.params.code), { userId: u.id, username: u.username, avatarUrl: u.avatarUrl, hasHub: u.hasHub, discordId: u.discordId });
   if (!r.ok) { res.status(400).json({ error: r.error }); return; }
   res.json({ ok: true, code: r.session!.code });
 });

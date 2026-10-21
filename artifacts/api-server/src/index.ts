@@ -6,6 +6,7 @@ import { startNoShowWatch } from "./lib/no-show";
 import { startOpsMonitor } from "./lib/ops-monitor";
 import { startSelfKeepalive } from "./lib/keepalive";
 import { registerDiscordCommands } from "./lib/discord-commands";
+import { cleanupOrphanCockpitVcs } from "./lib/discord-vc";
 
 const rawPort = process.env["PORT"];
 
@@ -47,5 +48,8 @@ initDb().then(() => {
 
     // Register the bot's slash commands (e.g. /say) with Discord.
     void registerDiscordCommands();
+
+    // Sweep any cockpit voice channels orphaned by a restart.
+    void cleanupOrphanCockpitVcs();
   });
 });

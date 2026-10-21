@@ -3,6 +3,7 @@
 // in memory (fine for a single instance) — a live call session doesn't need to
 // survive a restart. SSE pushes state changes and relays WebRTC signalling.
 import { logger } from "./logger";
+import { createCockpitVc, addMemberToCockpitVc, deleteCockpitVc, voiceConfigured } from "./discord-vc";
 
 export type Role = "pilot_flying" | "pilot_monitoring" | "flap_operator";
 export const ROLE_LABELS: Record<Role, string> = {
@@ -17,8 +18,11 @@ export interface Participant {
   avatarUrl: string | null;
   role: Role;
   hasHub: boolean;
+  discordId: string | null;
   joinedAt: number;
 }
+
+export interface JoinUser { userId: number; username: string; avatarUrl: string | null; hasHub: boolean; discordId: string | null }
 
 export interface FlightInfo {
   timetableId: number;
@@ -41,6 +45,10 @@ interface Session {
   participants: Map<number, Participant>;
   createdAt: number;
   chat: ChatMessage[];
+  // Locked Discord voice channel for the crew (created async after the session).
+  voiceUrl: string | null;
+  voiceChannelId: string | null;
+  voicePending: boolean;
   // userId → SSE response (for targeted signalling + broadcast)
   streams: Map<number, { write: (s: string) => void }>;
 }
@@ -72,9 +80,11 @@ function publicState(s: Session) {
     code: s.code,
     hostUserId: s.hostUserId,
     flight: s.flight,
+    voiceUrl: s.voiceUrl,
+    voicePending: s.voicePending,
     participants: [...s.participants.values()]
       .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map((p) => ({ userId: p.userId, username: p.username, avatarUrl: p.avatarUrl, role: p.role, hasHub: p.hasHub })),
+      .map((p) => ({ userId: p.userId, username: p.username, avatarUrl: p.avatarUrl, role: p.role, hasHub: p.hasHub, discordLinked: !!p.discordId })),
   };
 }
 
@@ -83,30 +93,46 @@ function broadcast(s: Session): void {
   for (const stream of s.streams.values()) { try { stream.write(payload); } catch { /* ignore */ } }
 }
 
-export function createSession(host: { userId: number; username: string; avatarUrl: string | null; hasHub: boolean }, flight: FlightInfo): Session {
+export function createSession(host: JoinUser, flight: FlightInfo): Session {
   // One session per host flight: reuse if they already have one.
   const existingCode = byUser.get(host.userId);
   if (existingCode) { const ex = sessions.get(existingCode); if (ex && ex.hostUserId === host.userId) return ex; }
   const code = genCode();
   const s: Session = {
     code, hostUserId: host.userId, flight,
-    participants: new Map(), createdAt: Date.now(), chat: [], streams: new Map(),
+    participants: new Map(), createdAt: Date.now(), chat: [],
+    voiceUrl: null, voiceChannelId: null, voicePending: voiceConfigured(),
+    streams: new Map(),
   };
-  s.participants.set(host.userId, { userId: host.userId, username: host.username, avatarUrl: host.avatarUrl, role: "pilot_flying", hasHub: host.hasHub, joinedAt: Date.now() });
+  s.participants.set(host.userId, { userId: host.userId, username: host.username, avatarUrl: host.avatarUrl, role: "pilot_flying", hasHub: host.hasHub, discordId: host.discordId, joinedAt: Date.now() });
   sessions.set(code, s);
   byUser.set(host.userId, code);
   logger.info({ code, host: host.userId }, "cockpit session created");
+  // Spin up the locked Discord voice channel in the background, then broadcast.
+  if (s.voicePending) {
+    void createCockpitVc(`✈ ${flight.flightNumber} · ${code}`, [host.discordId])
+      .then((vc) => {
+        const cur = sessions.get(code);
+        if (!cur) { if (vc) void deleteCockpitVc(vc.channelId); return; }
+        cur.voicePending = false;
+        if (vc) { cur.voiceUrl = vc.url; cur.voiceChannelId = vc.channelId; }
+        broadcast(cur);
+      })
+      .catch(() => { const cur = sessions.get(code); if (cur) { cur.voicePending = false; broadcast(cur); } });
+  }
   return s;
 }
 
-export function joinSession(code: string, user: { userId: number; username: string; avatarUrl: string | null; hasHub: boolean }): { ok: boolean; error?: string; session?: Session } {
+export function joinSession(code: string, user: JoinUser): { ok: boolean; error?: string; session?: Session } {
   const s = sessions.get(code.toUpperCase());
   if (!s) return { ok: false, error: "That shared cockpit doesn't exist or has ended." };
   if (s.participants.has(user.userId)) { return { ok: true, session: s }; }
   if (s.participants.size >= 4) return { ok: false, error: "This cockpit is full." };
   // New joiners come in as the Flap Operator.
-  s.participants.set(user.userId, { userId: user.userId, username: user.username, avatarUrl: user.avatarUrl, role: "flap_operator", hasHub: user.hasHub, joinedAt: Date.now() });
+  s.participants.set(user.userId, { userId: user.userId, username: user.username, avatarUrl: user.avatarUrl, role: "flap_operator", hasHub: user.hasHub, discordId: user.discordId, joinedAt: Date.now() });
   byUser.set(user.userId, s.code);
+  // Grant the new crew member access to the voice channel.
+  if (s.voiceChannelId && user.discordId) void addMemberToCockpitVc(s.voiceChannelId, user.discordId);
   broadcast(s);
   return { ok: true, session: s };
 }
@@ -122,9 +148,10 @@ export function leaveSession(userId: number): void {
   // Notify remaining peers that this user left (so they can tear down voice).
   for (const stream of s.streams.values()) { try { stream.write(`event: peer-left\ndata: ${JSON.stringify({ userId })}\n\n`); } catch { /* */ } }
   if (s.participants.size === 0 || userId === s.hostUserId) {
-    // Host leaving (or empty) ends the session.
+    // Host leaving (or empty) ends the session — tear down the voice channel.
     for (const stream of s.streams.values()) { try { stream.write(`event: ended\ndata: {}\n\n`); } catch { /* */ } }
     for (const p of s.participants.keys()) byUser.delete(p);
+    if (s.voiceChannelId) void deleteCockpitVc(s.voiceChannelId);
     sessions.delete(code);
     logger.info({ code }, "cockpit session ended");
   } else {

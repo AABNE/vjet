@@ -1,16 +1,15 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/components/auth-provider";
 import { Avatar } from "@/components/Avatar";
 import { apiGet, apiPost } from "@/lib/api";
 import { dispatchChat } from "@/lib/puter";
-import { VoiceManager } from "@/lib/cockpitVoice";
-import { Mic, MicOff, Send, Plane, Users, LinkIcon, Loader2, LogOut, Volume2, Flag, X } from "lucide-react";
+import { Send, Plane, Users, LinkIcon, Loader2, LogOut, Volume2, Flag, X } from "lucide-react";
 
 interface ChatMsgRow { userId: number; username: string; text: string; at: number }
-interface Participant { userId: number; username: string; avatarUrl: string | null; role: string; hasHub: boolean }
+interface Participant { userId: number; username: string; avatarUrl: string | null; role: string; hasHub: boolean; discordLinked?: boolean }
 interface Flight { flightNumber: string; departure: string; arrival: string; aircraft: string; registration: string | null; departureTime: string; flightDate: string; timetableId: number; flightId: number }
-interface State { code: string; hostUserId: number; flight: Flight; participants: Participant[]; you?: number; isHost?: boolean; joined?: boolean }
+interface State { code: string; hostUserId: number; flight: Flight; participants: Participant[]; you?: number; isHost?: boolean; joined?: boolean; voiceUrl?: string | null; voicePending?: boolean }
 interface Msg { role: "user" | "assistant"; content: string }
 
 const ROLE_LABEL: Record<string, string> = { pilot_flying: "Pilot Flying", pilot_monitoring: "Pilot Monitoring", flap_operator: "Flap Operator" };
@@ -26,17 +25,9 @@ export default function Cockpit() {
   const [state, setState] = useState<State | null>(null);
   const [chat, setChat] = useState<ChatMsgRow[]>([]);
   const [error, setError] = useState("");
-  const [voiceOn, setVoiceOn] = useState(false);
-  const [voiceLive, setVoiceLive] = useState(false);
-  const [muted, setMuted] = useState(false);
 
-  const voiceRef = useRef<VoiceManager | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const leftRef = useRef(false);
-
-  const sendSignal = useCallback((to: number, data: unknown) => {
-    apiPost(`/api/cockpit/${code}/signal`, { to, data }).catch(() => {});
-  }, [code]);
 
   // Join + open the live stream.
   useEffect(() => {
@@ -62,14 +53,7 @@ export default function Cockpit() {
       try {
         const s = JSON.parse(ev.data);
         setState((prev) => ({ ...(prev as State), ...s, you: prev?.you ?? myId, isHost: s.hostUserId === (prev?.you ?? myId) }));
-        voiceRef.current?.syncPeers((s.participants as Participant[]).map((p) => p.userId)).catch(() => {});
       } catch { /* */ }
-    });
-    es.addEventListener("signal", (ev: MessageEvent) => {
-      try { const { from, data } = JSON.parse(ev.data); voiceRef.current?.onSignal(from, data).catch(() => {}); } catch { /* */ }
-    });
-    es.addEventListener("peer-left", (ev: MessageEvent) => {
-      try { const { userId } = JSON.parse(ev.data); voiceRef.current?.removePeer(userId); } catch { /* */ }
     });
     es.addEventListener("chat-history", (ev: MessageEvent) => { try { setChat(JSON.parse(ev.data)); } catch { /* */ } });
     es.addEventListener("chat", (ev: MessageEvent) => { try { const m = JSON.parse(ev.data); setChat((c) => [...c, m]); } catch { /* */ } });
@@ -87,19 +71,8 @@ export default function Cockpit() {
   function cleanup(sendLeave: boolean) {
     if (leftRef.current) return; leftRef.current = true;
     try { esRef.current?.close(); } catch { /* */ }
-    voiceRef.current?.stop();
     if (sendLeave) apiPost(`/api/cockpit/${code}/leave`).catch(() => {});
   }
-
-  async function enableVoice() {
-    const myId = state?.you ?? 0;
-    const vm = new VoiceManager(myId, sendSignal, (c) => setVoiceLive(c));
-    const ok = await vm.start();
-    if (!ok) { setError("Couldn't access your microphone — check the browser permission."); return; }
-    voiceRef.current = vm; setVoiceOn(true);
-    await vm.syncPeers((state?.participants ?? []).map((p) => p.userId));
-  }
-  function toggleMute() { const m = !muted; setMuted(m); voiceRef.current?.setMuted(m); }
 
   async function setRole(targetUserId: number, role: string) {
     await apiPost(`/api/cockpit/${code}/role`, { targetUserId, role }).catch((e: any) => setError(e?.message || "Couldn't change role."));
@@ -159,8 +132,7 @@ export default function Cockpit() {
                     </select>
                   )}
                   {state.you != null && p.userId !== state.you && (
-                    <ReportButton reportedId={p.userId} username={p.username} context={`cockpit ${code}`}
-                      getAudioClip={() => voiceRef.current?.captureClip() ?? null} />
+                    <ReportButton reportedId={p.userId} username={p.username} context={`cockpit ${code}`} />
                   )}
                 </div>
               ))}
@@ -168,20 +140,28 @@ export default function Cockpit() {
             {isHost && <p className="mt-2 text-[11px] text-[#9ca3af]">You started the flight, so you assign who's Pilot Flying, Pilot Monitoring, and who's on flaps.</p>}
           </section>
 
-          {/* Voice */}
+          {/* Voice — a locked Discord channel the bot spins up for the crew */}
           <section className="rounded-2xl border border-[#1a1a1a] bg-[#1a1a1a] p-4 text-white">
             <div className="flex items-center gap-2">
               <Volume2 className="h-4 w-4 text-[#fb5713]" />
               <span className="font-mono text-[10px] font-bold uppercase tracking-[.2em] text-white/70">Cockpit voice</span>
-              {voiceOn && <span className={`ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider ${voiceLive ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-white/50"}`}><span className={`h-1.5 w-1.5 rounded-full ${voiceLive ? "animate-ping bg-emerald-400" : "bg-white/40"}`} />{voiceLive ? "Connected" : "Connecting…"}</span>}
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              {!voiceOn ? (
-                <button onClick={enableVoice} className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#e04d0e]"><Mic className="h-4 w-4" />Join voice</button>
+            <div className="mt-3">
+              {state.voicePending ? (
+                <div className="flex items-center gap-2 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin" />Setting up your voice channel…</div>
+              ) : state.voiceUrl ? (
+                <>
+                  <a href={state.voiceUrl} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#5865F2] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#4752c4]">
+                    <Volume2 className="h-4 w-4" />Join voice channel
+                  </a>
+                  <p className="mt-2 text-[11px] text-white/50">
+                    A private Discord channel just for this crew. {me && me.discordLinked === false ? "Link your Discord in Settings or you won't see it." : "It's deleted when the flight ends."}
+                  </p>
+                </>
               ) : (
-                <button onClick={toggleMute} className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition ${muted ? "bg-red-500 hover:bg-red-600" : "bg-white/10 hover:bg-white/20"}`}>{muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}{muted ? "Unmute" : "Mute"}</button>
+                <p className="text-[11px] text-white/50">Voice channels aren't set up for this server. Crew chat still works below.</p>
               )}
-              <span className="text-[11px] text-white/50">Always-on — just talk to your {me?.role === "flap_operator" ? "captain" : "flap operator"}.</span>
             </div>
           </section>
 
@@ -305,16 +285,7 @@ function CrewChat({ code, chat, myId, participants }: { code: string; chat: Chat
 
 const REPORT_REASONS = ["Abusive language", "Harassment", "Inappropriate content", "Cheating / exploiting", "Spam", "Other"];
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result));
-    fr.onerror = reject;
-    fr.readAsDataURL(blob);
-  });
-}
-
-function ReportButton({ reportedId, username, context, getAudioClip }: { reportedId: number; username: string; context: string; getAudioClip?: () => Blob | null }) {
+function ReportButton({ reportedId, username, context }: { reportedId: number; username: string; context: string }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
@@ -326,12 +297,7 @@ function ReportButton({ reportedId, username, context, getAudioClip }: { reporte
     if (busy) return;
     setBusy(true); setErr("");
     try {
-      let audioClip = "";
-      try {
-        const blob = getAudioClip?.();
-        if (blob && blob.size > 0 && blob.size < 6_000_000) audioClip = await blobToDataUrl(blob);
-      } catch { /* audio is best-effort evidence */ }
-      await apiPost("/api/reports", { reportedUserId: reportedId, reason, detail, context, audioClip });
+      await apiPost("/api/reports", { reportedUserId: reportedId, reason, detail, context });
       setDone(true);
       setTimeout(() => { setOpen(false); setDone(false); setDetail(""); }, 1400);
     } catch (e: any) { setErr(e?.message || "Couldn't send the report."); }
@@ -363,7 +329,7 @@ function ReportButton({ reportedId, username, context, getAudioClip }: { reporte
                 <label className="mt-3 block font-mono text-[10px] font-bold uppercase tracking-wider text-[#6b7280]">What happened? (optional)</label>
                 <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} placeholder="Add any detail that helps the admins…"
                   className="mt-1 w-full resize-none rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm outline-none focus:border-[#fb5713]" />
-                <p className="mt-2 text-[11px] text-[#9ca3af]">The crew chat and a recording of the last couple of minutes of the call are attached automatically.</p>
+                <p className="mt-2 text-[11px] text-[#9ca3af]">The crew chat transcript is attached automatically.</p>
                 {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
                 <div className="mt-4 flex gap-2">
                   <button onClick={() => setOpen(false)} disabled={busy} className="flex-1 rounded-xl border border-[#e5e7eb] px-4 py-2.5 text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6]">Cancel</button>
