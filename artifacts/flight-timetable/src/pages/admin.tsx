@@ -85,6 +85,7 @@ export default function Admin() {
   const [aircraft, setAircraft] = useState<AircraftType[]>(["A320"]);
   const [simulatorVersion, setVersion] =
     useState<"MSFS2020" | "MSFS2024">("MSFS2024");
+  const [cid, setCid] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
 
   const refresh = () => {
@@ -99,6 +100,7 @@ export default function Admin() {
         setUsername("");
         setPassword("");
         setAircraft(["A320"]);
+        setCid("");
         setIsAdmin(false);
       },
     },
@@ -498,11 +500,12 @@ export default function Admin() {
                 password,
                 aircraft,
                 simulatorVersion,
+                cid: cid.trim() || null,
                 isAdmin,
               } as any,
             });
           }}
-          className="grid gap-3 border-b border-[#f3f4f6] bg-[#f9fafb] p-5 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end"
+          className="grid gap-3 border-b border-[#f3f4f6] bg-[#f9fafb] p-5 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end"
         >
           <label className="block">
             <span className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-[#6b7280]">
@@ -559,6 +562,25 @@ export default function Admin() {
             </select>
           </label>
 
+          <label className="block">
+            <span className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-[#6b7280]">
+              VATSIM CID{" "}
+              <span className="text-[9px] font-normal normal-case text-[#9ca3af]">
+                (optional)
+              </span>
+            </span>
+            <input
+              data-testid="input-new-pilot-cid"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={12}
+              value={cid}
+              onChange={(e) => setCid(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder="e.g. 1234567"
+              className="h-10 w-full rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#1a1a1a] outline-none placeholder:text-[#9ca3af] focus:border-[#fb5713]"
+            />
+          </label>
+
           <button
             data-testid="button-create-pilot"
             disabled={create.isPending || !aircraft.length}
@@ -568,7 +590,7 @@ export default function Admin() {
             Create pilot
           </button>
 
-          <div className="md:col-span-4">
+          <div className="md:col-span-5">
             <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-widest text-[#6b7280]">
               Fleet assignment
             </div>
@@ -775,6 +797,8 @@ function PilotRow({
   const [version, setVersion] =
     useState<"MSFS2020" | "MSFS2024">(pilot.simulatorVersion);
 
+  const [cid, setCid] = useState<string>(pilot.cid ?? "");
+
   const change = (c: AircraftType) =>
     setSelected((prev) =>
       prev.includes(c)
@@ -786,7 +810,8 @@ function PilotRow({
 
   const dirty =
     selected.join(",") !== pilot.aircraft.join(",") ||
-    version !== pilot.simulatorVersion;
+    version !== pilot.simulatorVersion ||
+    cid.trim() !== (pilot.cid ?? "");
 
   return (
     <div
@@ -805,7 +830,7 @@ function PilotRow({
               {pilot.isAdmin && <span className="font-mono text-[9px] uppercase tracking-wider text-[#fb5713]">· Admin</span>}
             </div>
             <div className="mt-1 font-mono text-[9px] uppercase text-[#9ca3af]">
-              ID {pilot.id} · SimBrief: {pilot.simbriefUsername || "not set"}
+              ID {pilot.id} · SimBrief: {pilot.simbriefUsername || "not set"} · CID: {pilot.cid || "not set"}
             </div>
           </div>
         </div>
@@ -857,6 +882,17 @@ function PilotRow({
           <option value="MSFS2024">MSFS 2024</option>
         </select>
 
+        <input
+          data-testid={`input-pilot-cid-${pilot.id}`}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={12}
+          value={cid}
+          onChange={(e) => setCid(e.target.value.replace(/[^0-9]/g, ""))}
+          placeholder="VATSIM CID"
+          className="h-9 w-32 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 text-[10px] font-semibold text-[#1a1a1a] outline-none placeholder:font-normal placeholder:text-[#9ca3af] focus:border-[#fb5713]"
+        />
+
         <button
           type="button"
           data-testid={`button-save-pilot-${pilot.id}`}
@@ -865,6 +901,7 @@ function PilotRow({
             onSave(pilot.id, {
               aircraft: selected,
               simulatorVersion: version,
+              cid: cid.trim() || null,
             })
           }
           className="rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-[9px] font-bold uppercase tracking-wider text-white transition hover:bg-[#333] disabled:opacity-40"

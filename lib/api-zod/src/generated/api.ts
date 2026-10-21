@@ -273,6 +273,7 @@ export const GetAdminUsersResponseItem = zod.object({
   aircraft: zod.array(zod.enum(["A320", "A20N", "A21N", "B788"])),
   simulatorVersion: zod.enum(["MSFS2020", "MSFS2024"]),
   simbriefUsername: zod.string().nullable(),
+  cid: zod.string().nullable(),
   isAdmin: zod.boolean(),
 });
 export const GetAdminUsersResponse = zod.array(GetAdminUsersResponseItem);
@@ -286,6 +287,7 @@ export const CreateAdminUserBody = zod.object({
   password: zod.string().optional(),
   aircraft: zod.array(zod.enum(["A320", "A20N", "A21N", "B788"])).min(1),
   simulatorVersion: zod.enum(["MSFS2020", "MSFS2024"]),
+  cid: zod.string().nullable().optional(),
   isAdmin: zod.boolean(),
 });
 
@@ -299,6 +301,7 @@ export const UpdateAdminUserParams = zod.object({
 export const UpdateAdminUserBody = zod.object({
   aircraft: zod.array(zod.enum(["A320", "A20N", "A21N", "B788"])).min(1),
   simulatorVersion: zod.enum(["MSFS2020", "MSFS2024"]),
+  cid: zod.string().nullable().optional(),
 });
 
 export const UpdateAdminUserResponse = zod.object({
@@ -307,6 +310,7 @@ export const UpdateAdminUserResponse = zod.object({
   aircraft: zod.array(zod.enum(["A320", "A20N", "A21N", "B788"])),
   simulatorVersion: zod.enum(["MSFS2020", "MSFS2024"]),
   simbriefUsername: zod.string().nullable(),
+  cid: zod.string().nullable(),
   isAdmin: zod.boolean(),
 });
 

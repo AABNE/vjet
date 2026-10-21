@@ -9,6 +9,8 @@ export const usersTable = pgTable("users", {
   aircraft: text("aircraft").notNull().default("A320"),
   simulatorVersion: text("simulator_version").notNull().default("MSFS2024"),
   simbriefUsername: text("simbrief_username"),
+  // VATSIM Certificate ID (numeric), set by an admin in the control tower.
+  cid: text("cid"),
   isAdmin: text("is_admin").notNull().default("false"),
   hasSeenTutorial: text("has_seen_tutorial").notNull().default("false"),
   mustChangePassword: text("must_change_password").notNull().default("false"),

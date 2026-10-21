@@ -15,5 +15,7 @@ export interface AdminUser {
   simulatorVersion: SimulatorVersion;
   /** @nullable */
   simbriefUsername: string | null;
+  /** @nullable */
+  cid: string | null;
   isAdmin: boolean;
 }

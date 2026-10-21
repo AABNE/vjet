@@ -15,6 +15,7 @@ export async function initDb(): Promise<void> {
         "aircraft"            TEXT NOT NULL DEFAULT 'A320',
         "simulator_version"   TEXT NOT NULL DEFAULT 'MSFS2024',
         "simbrief_username"   TEXT,
+        "cid"                 TEXT,
         "is_admin"            TEXT NOT NULL DEFAULT 'false',
         "has_seen_tutorial"   TEXT NOT NULL DEFAULT 'false',
         "must_change_password" TEXT NOT NULL DEFAULT 'false',
@@ -34,6 +35,7 @@ export async function initDb(): Promise<void> {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "discord_id" TEXT;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "route_continuity" BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_url" TEXT;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cid" TEXT;
 
       CREATE TABLE IF NOT EXISTS "flights" (
         "id"               SERIAL PRIMARY KEY,

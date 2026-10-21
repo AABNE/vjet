@@ -16,6 +16,17 @@ const DEFAULT_PASSWORD = "Vjet1234";
 
 const router: IRouter = Router();
 
+// Normalise an admin-supplied VATSIM CID. Empty/blank clears it (null). A
+// non-empty value must be numeric (VATSIM CIDs are digits). Returns the value
+// to store, or { error } for a bad input.
+function normalizeCid(raw: unknown): { value: string | null } | { error: string } {
+  if (raw === undefined || raw === null) return { value: null };
+  const cid = String(raw).trim();
+  if (cid === "") return { value: null };
+  if (!/^[0-9]{1,12}$/.test(cid)) return { error: "Enter a valid VATSIM CID (digits only)." };
+  return { value: cid };
+}
+
 async function requireAdmin(req: any, res: any): Promise<boolean> {
   if (!req.session.userId) {
     res.status(401).json({ error: "Not authenticated" });
@@ -89,6 +100,7 @@ router.get("/admin/users", async (req, res): Promise<void> => {
     aircraft: u.aircraft.split(",").map((type) => type.trim()).filter(Boolean),
     simulatorVersion: u.simulatorVersion,
     simbriefUsername: u.simbriefUsername,
+    cid: u.cid ?? null,
     isAdmin: u.isAdmin === "true",
   }))));
 });
@@ -102,6 +114,12 @@ router.post("/admin/users", async (req, res): Promise<void> => {
     return;
   }
   const { username, password, aircraft, simulatorVersion, isAdmin } = parsed.data;
+
+  const cidResult = normalizeCid(parsed.data.cid);
+  if ("error" in cidResult) {
+    res.status(400).json({ error: cidResult.error });
+    return;
+  }
 
   // If no password supplied, use the default and require change on first login
   const chosenPassword = (password && password.trim().length > 0) ? password.trim() : DEFAULT_PASSWORD;
@@ -119,6 +137,7 @@ router.post("/admin/users", async (req, res): Promise<void> => {
     passwordHash,
     aircraft: aircraft.join(","),
     simulatorVersion,
+    cid: cidResult.value,
     isAdmin: isAdmin ? "true" : "false",
     mustChangePassword: mustChange,
     hasSeenTutorial: "false",
@@ -130,6 +149,7 @@ router.post("/admin/users", async (req, res): Promise<void> => {
     aircraft: user.aircraft.split(",").map((type) => type.trim()).filter(Boolean),
     simulatorVersion: user.simulatorVersion,
     simbriefUsername: user.simbriefUsername,
+    cid: user.cid ?? null,
     isAdmin: user.isAdmin === "true",
   }]);
   res.status(201).json(createdUser);
@@ -157,12 +177,23 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const patch: Partial<typeof usersTable.$inferInsert> = {
+    aircraft: parsed.data.aircraft.join(","),
+    simulatorVersion: parsed.data.simulatorVersion,
+  };
+  // Only touch cid when the key is present (undefined = leave unchanged).
+  if (parsed.data.cid !== undefined) {
+    const cidResult = normalizeCid(parsed.data.cid);
+    if ("error" in cidResult) {
+      res.status(400).json({ error: cidResult.error });
+      return;
+    }
+    patch.cid = cidResult.value;
+  }
+
   const [updated] = await db
     .update(usersTable)
-    .set({
-      aircraft: parsed.data.aircraft.join(","),
-      simulatorVersion: parsed.data.simulatorVersion,
-    })
+    .set(patch)
     .where(eq(usersTable.id, id))
     .returning();
 
@@ -172,6 +203,7 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     aircraft: updated.aircraft.split(",").map((type) => type.trim()).filter(Boolean),
     simulatorVersion: updated.simulatorVersion,
     simbriefUsername: updated.simbriefUsername,
+    cid: updated.cid ?? null,
     isAdmin: updated.isAdmin === "true",
   }));
 });
