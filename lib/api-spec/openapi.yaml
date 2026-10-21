@@ -535,6 +535,9 @@ components:
           $ref: "#/components/schemas/SimulatorVersion"
         simbriefUsername:
           type: ["string", "null"]
+        cid:
+          type: ["string", "null"]
+          description: "VATSIM Certificate ID (numeric), set by an admin"
         isAdmin:
           type: boolean
       required:
@@ -543,6 +546,7 @@ components:
         - aircraft
         - simulatorVersion
         - simbriefUsername
+        - cid
         - isAdmin
 
     CreateUserBody:
@@ -560,6 +564,9 @@ components:
           minItems: 1
         simulatorVersion:
           $ref: "#/components/schemas/SimulatorVersion"
+        cid:
+          type: ["string", "null"]
+          description: "VATSIM Certificate ID (numeric)"
         isAdmin:
           type: boolean
       required:
@@ -613,6 +620,9 @@ components:
           minItems: 1
         simulatorVersion:
           $ref: "#/components/schemas/SimulatorVersion"
+        cid:
+          type: ["string", "null"]
+          description: "VATSIM Certificate ID (numeric); empty clears it"
       required: [aircraft, simulatorVersion]
 
     ChangePasswordBody:

@@ -12,4 +12,6 @@ export interface AdminUserUpdate {
   /** @minItems 1 */
   aircraft: AircraftCode[];
   simulatorVersion: SimulatorVersion;
+  /** @nullable */
+  cid?: string | null;
 }

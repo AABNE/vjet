@@ -14,5 +14,7 @@ export interface CreateUserBody {
   /** @minItems 1 */
   aircraft: AircraftCode[];
   simulatorVersion: SimulatorVersion;
+  /** @nullable */
+  cid?: string | null;
   isAdmin: boolean;
 }

@@ -64,6 +64,8 @@ export interface AdminUser {
   simulatorVersion: SimulatorVersion;
   /** @nullable */
   simbriefUsername: string | null;
+  /** @nullable */
+  cid: string | null;
   isAdmin: boolean;
 }
 
@@ -74,6 +76,8 @@ export interface CreateUserBody {
   /** @minItems 1 */
   aircraft: AircraftCode[];
   simulatorVersion: SimulatorVersion;
+  /** @nullable */
+  cid?: string | null;
   isAdmin: boolean;
 }
 
@@ -118,6 +122,8 @@ export interface AdminUserUpdate {
   /** @minItems 1 */
   aircraft: AircraftCode[];
   simulatorVersion: SimulatorVersion;
+  /** @nullable */
+  cid?: string | null;
 }
 
 export interface Flight {
