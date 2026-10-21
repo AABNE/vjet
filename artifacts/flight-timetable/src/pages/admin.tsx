@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
 import { Avatar } from "@/components/Avatar";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import {
   getGetAdminFlightsQueryKey,
   getGetAdminUsersQueryKey,
@@ -60,6 +60,15 @@ export default function Admin() {
     queryKey: ["admin-avatars"], queryFn: () => apiGet("/api/admin/avatars"), retry: false,
   });
   const avatars = avatarsQ.data?.avatars ?? {};
+
+  const hubReqQ = useQuery<{ enabled: boolean }>({ queryKey: ["require-hub"], queryFn: () => apiGet("/api/ops/require-hub"), retry: false });
+  const [hubReqBusy, setHubReqBusy] = useState(false);
+  async function toggleHubReq() {
+    const next = !(hubReqQ.data?.enabled ?? true);
+    setHubReqBusy(true);
+    try { await apiPost("/api/ops/require-hub", { enabled: next }); await hubReqQ.refetch(); }
+    finally { setHubReqBusy(false); }
+  }
 
   const flightsQ = useGetAdminFlights({
     query: {
@@ -237,6 +246,18 @@ export default function Admin() {
           <JetstarStar size={22} />
         </div>
       </div>
+
+      {/* Ops policy */}
+      <section className="mb-7 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#e5e7eb] bg-white p-5">
+        <div className="min-w-0">
+          <h2 className="font-bold uppercase tracking-tight text-[#1a1a1a]">Require pilot hub to fly</h2>
+          <p className="mt-1 text-xs text-[#6b7280]">When on, pilots need the Sim Link app (with MSFS) connected to start a flight, get clearance, or host a shared cockpit. Turn off to let pilots fly without the hub.</p>
+        </div>
+        <button onClick={toggleHubReq} disabled={hubReqBusy} aria-pressed={hubReqQ.data?.enabled ?? true}
+          className={`flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition ${(hubReqQ.data?.enabled ?? true) ? "justify-end bg-[#fb5713]" : "justify-start bg-[#e5e7eb]"} disabled:opacity-50`}>
+          <span className="h-6 w-6 rounded-full bg-white shadow" />
+        </button>
+      </section>
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">

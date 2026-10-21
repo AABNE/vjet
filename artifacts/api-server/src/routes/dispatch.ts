@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
 import { fetchSimbriefBriefing, SimbriefError, type SimbriefBriefing } from "../lib/simbrief";
-import { notify, getBan, addInfraction, hubConnected } from "../lib/ops";
+import { notify, getBan, addInfraction, hubConnected, hubRequired } from "../lib/ops";
 import { aiComplete } from "../lib/ai";
 
 const router: IRouter = Router();
@@ -194,7 +194,7 @@ router.post("/dispatch/:id/clearance", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Request dispatch approval before clearance." });
     return;
   }
-  if (!(await hubConnected(user.id))) {
+  if (await hubRequired() && !(await hubConnected(user.id))) {
     res.status(409).json({ error: "Pilot hub not detected. Install and open the vJetstar Sim Link app (with MSFS running) to get clearance.", hubRequired: true });
     return;
   }

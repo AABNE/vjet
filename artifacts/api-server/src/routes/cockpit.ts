@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, usersTable, timetableTable, flightsTable, eq, and } from "@workspace/db";
-import { hubConnected, notify } from "../lib/ops";
+import { hubConnected, hubRequired, notify } from "../lib/ops";
 import {
   createSession, joinSession, leaveSession, setRole, getSession, sessionOfUser,
   attachStream, signal, publicState, type FlightInfo, type Role,
@@ -24,7 +24,7 @@ router.post("/cockpit/create", async (req: Request, res: Response): Promise<void
   const timetableId = Number(req.body?.timetableId);
   const [entry] = await db.select().from(timetableTable).where(and(eq(timetableTable.id, timetableId), eq(timetableTable.userId, u.id)));
   if (!entry) { res.status(404).json({ error: "That flight isn't on your timetable." }); return; }
-  if (!u.hasHub) { res.status(409).json({ error: "You need the pilot hub open (Sim Link + MSFS) to host a shared cockpit." }); return; }
+  if (await hubRequired() && !u.hasHub) { res.status(409).json({ error: "You need the pilot hub open (Sim Link + MSFS) to host a shared cockpit." }); return; }
   const [f] = await db.select().from(flightsTable).where(eq(flightsTable.id, entry.flightId));
   if (!f) { res.status(404).json({ error: "Flight not found." }); return; }
   const flight: FlightInfo = {

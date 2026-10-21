@@ -10,9 +10,19 @@ import {
   pilotDisciplineTable,
   pilotInfractionsTable,
   usersTable,
+  opsSettingsTable,
   type PilotDiscipline,
 } from "@workspace/db";
 import { sendDiscordDM } from "./discord-dm";
+
+// Admin policy: is the pilot hub required to fly / host a shared cockpit?
+// (ops_settings "require_hub", default on). Admins can switch it off.
+export async function hubRequired(): Promise<boolean> {
+  try {
+    const [r] = await db.select().from(opsSettingsTable).where(eq(opsSettingsTable.key, "require_hub"));
+    return (r?.value ?? "1") !== "0";
+  } catch { return true; }
+}
 
 // The pilot hub (vJetstar Sim Link desktop app) is considered connected when it
 // sent a heartbeat recently. Flying actions (start / clearance) require it.

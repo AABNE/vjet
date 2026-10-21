@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
-import { getBan, hubConnected } from "../lib/ops";
+import { getBan, hubConnected, hubRequired } from "../lib/ops";
 import { findBookingConflict, conflictMessage } from "../lib/booking";
 
 import {
@@ -251,7 +251,7 @@ router.post("/timetable/:id/start", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!(await hubConnected(req.session.userId))) {
+  if (await hubRequired() && !(await hubConnected(req.session.userId))) {
     res.status(409).json({ error: "Pilot hub not detected. Install and open the vJetstar Sim Link app (with MSFS running) before starting a flight.", hubRequired: true });
     return;
   }

@@ -40,7 +40,7 @@ export default function Flights() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      {hub.isSuccess && !hub.data?.connected && (
+      {hub.isSuccess && (hub.data?.required ?? true) && !hub.data?.connected && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-xs text-[#92400e]" role="status">
           <span className="font-bold">Heads up:</span>
           <span>you can add flights to plan ahead, but you'll need the vJetstar Sim Link desktop app open (with MSFS running) to actually start or get clearance for them.</span>

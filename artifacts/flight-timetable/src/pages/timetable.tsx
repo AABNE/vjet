@@ -117,6 +117,8 @@ export default function Timetable() {
   const { isApp, connected, position } = useSimLink();
   const hub = useHubStatus();
   const hubConnected = hub.data?.connected ?? false;
+  // Admins can turn the hub requirement off; when off, flying isn't gated.
+  const hubGate = (hub.data?.required ?? true) && !hubConnected;
   const [, navigate] = useLocation();
   const [cockpitBusy, setCockpitBusy] = useState<number | null>(null);
   async function startCockpit(timetableId: number) {
@@ -156,7 +158,7 @@ export default function Timetable() {
       </div>
 
       {/* Pilot hub not detected — flights can't be started / cleared */}
-      {hub.isSuccess && !hubConnected && (
+      {hub.isSuccess && hubGate && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-xs text-[#92400e]" role="status">
           <span className="font-bold">Pilot hub not detected.</span>
           <span>You need the vJetstar Sim Link desktop app open (with MSFS running) to start a flight or get clearance.</span>
@@ -287,14 +289,14 @@ export default function Timetable() {
                           {isAuto ? "Finish now" : "Finish sector"}
                         </button>
                       ) : (
-                        <button data-testid={`button-start-flight-${entry.id}`} disabled={start.isPending || !hubConnected}
+                        <button data-testid={`button-start-flight-${entry.id}`} disabled={start.isPending || hubGate}
                           onClick={() => start.mutate({ id: entry.id })}
                           title={hubConnected ? undefined : "Open the vJetstar Sim Link app (with MSFS running) to start a flight"}
                           className="rounded-xl bg-[#1a1a1a] px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-50 disabled:cursor-not-allowed">
                           {isAuto ? "Start now" : "Start flight"}
                         </button>
                       )}
-                      <button onClick={() => startCockpit(entry.id)} disabled={cockpitBusy === entry.id || !hubConnected}
+                      <button onClick={() => startCockpit(entry.id)} disabled={cockpitBusy === entry.id || hubGate}
                         title={hubConnected ? "Fly this with another pilot — shared cockpit + voice" : "Open the pilot hub to fly with a copilot"}
                         className="flex items-center gap-1.5 rounded-xl border border-[#fb5713]/30 bg-[#fff7ed] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#fb5713] transition hover:bg-[#ffe9d6] disabled:opacity-50">
                         <Users className="h-3.5 w-3.5" />{cockpitBusy === entry.id ? "…" : "Fly with copilot"}

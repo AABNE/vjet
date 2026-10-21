@@ -15,7 +15,7 @@ import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegist
 import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
 import { getMany, toIcao } from "../lib/weather";
 import { applyApproval } from "../lib/approvals";
-import { hubConnected } from "../lib/ops";
+import { hubConnected, hubRequired } from "../lib/ops";
 import { MAINT_MINUTE_MS, skipDelivery, setSetting } from "../lib/maintenance";
 
 const router: IRouter = Router();
@@ -71,7 +71,20 @@ router.post("/pilot/route-continuity", async (req, res): Promise<void> => {
 router.get("/pilot/hub-status", async (req, res): Promise<void> => {
   const u = await requireUser(req, res); if (!u) return;
   const connected = await hubConnected(u.id);
-  res.json({ connected, msfsRunning: !!u.msfsRunning, lastSeenAt: u.lastSeenAt ? new Date(u.lastSeenAt).toISOString() : null });
+  res.json({ connected, required: await hubRequired(), msfsRunning: !!u.msfsRunning, lastSeenAt: u.lastSeenAt ? new Date(u.lastSeenAt).toISOString() : null });
+});
+
+// Admin policy: require the pilot hub to fly / host a shared cockpit?
+router.get("/ops/require-hub", async (req, res): Promise<void> => {
+  const u = await requireUser(req, res); if (!u) return;
+  res.json({ enabled: await hubRequired() });
+});
+router.post("/ops/require-hub", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const on = req.body?.enabled === true || req.body?.enabled === "1";
+  await setSetting("require_hub", on ? "1" : "0");
+  await logEvent({ kind: "audit", agentKey: "ops-manager", title: `Pilot hub ${on ? "required" : "not required"} to fly` });
+  res.json({ ok: true, enabled: on });
 });
 
 // ── Operations dashboard overview ───────────────────────────────────────────
