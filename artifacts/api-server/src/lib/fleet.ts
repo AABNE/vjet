@@ -50,7 +50,7 @@ export async function findSpare(type: string, excludeReg: string): Promise<strin
 // if it has none yet, where its day starts.
 const TURN_MS = 30 * 60_000;
 export async function findReplacementAtAirport(
-  type: string, airport: string, departMs: number, durationMin: number, excludeReg: string,
+  type: string, airport: string | null, departMs: number, durationMin: number, excludeReg: string,
 ): Promise<string | null> {
   const fleet = await db.select().from(aircraftTable)
     .where(and(eq(aircraftTable.type, type), eq(aircraftTable.status, "active")));
@@ -65,6 +65,8 @@ export async function findReplacementAtAirport(
       .sort((a, b) => a.dep - b.dep);
     // Busy if any of its flights overlaps the window (incl. turnaround).
     if (timeline.some((t) => t.dep < winEnd && t.end + TURN_MS > winStart)) continue;
+    // airport === null → any free aircraft of the type (fallback, no teleport check).
+    if (airport === null) return ac.registration;
     // Where is it at departMs? Last flight that landed (with turnaround) before then.
     let pos: string | null = null;
     for (const t of timeline) { if (t.end + TURN_MS <= departMs) pos = t.to; }
@@ -89,18 +91,22 @@ export async function reassignOrCancel(registration: string, reason: string): Pr
     if (eff !== registration) continue;
     if (f.departsAt && new Date(f.departsAt).getTime() <= now) continue; // leave anything underway/past
 
-    // Only swap to an aircraft actually at this flight's departure airport.
+    // Prefer an aircraft already at this flight's departure airport (no teleport).
+    // But a flight the pilot HASN'T started yet should never be cancelled just
+    // because nothing's parked there — fall back to any free aircraft of the type.
     const departMs = f.departsAt ? new Date(f.departsAt).getTime() : null;
-    const repl = departMs != null
-      ? await findReplacementAtAirport(f.aircraft, f.departure, departMs, f.durationMinutes, registration)
-      : null;
+    let repl: string | null = null;
+    if (departMs != null) {
+      repl = await findReplacementAtAirport(f.aircraft, f.departure, departMs, f.durationMinutes, registration);
+      if (!repl) repl = await findReplacementAtAirport(f.aircraft, null, departMs, f.durationMinutes, registration);
+    }
     if (repl) {
       await assignAircraft({ timetableId: tt.id, flightId: f.id, registration: repl, by: "agent:fleet-manager", reason });
       await notify(tt.userId, "ops", `Aircraft change — ${f.flightNumber}`, `${registration} went tech; you've been moved to ${repl}. Same route and time.`);
       reassigned++;
     } else {
       await db.delete(timetableTable).where(eq(timetableTable.id, tt.id));
-      await notify(tt.userId, "ops", `Flight cancelled — ${f.flightNumber}`, `${registration} went tech and no spare aircraft was free, so ${f.departure}-${f.arrival} is cancelled. Please pick another flight.`);
+      await notify(tt.userId, "ops", `Flight cancelled — ${f.flightNumber}`, `${registration} went tech and no aircraft of that type was free, so ${f.departure}-${f.arrival} is cancelled. Please pick another flight.`);
       cancelled++;
     }
   }

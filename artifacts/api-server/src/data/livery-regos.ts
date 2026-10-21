@@ -21,11 +21,27 @@ export const LIVERY_REGOS: Record<string, string[]> = {
   ],
 };
 
-// Four reserve aircraft kept idle at the main hubs (one each). Held out of the
-// daily rotation and available there for same-airport swaps.
-export const HUB_RESERVES: Array<{ registration: string; base: string }> = [
-  { registration: "VH-VQG", base: "BNE" },
-  { registration: "VH-A5F", base: "MEL" },
-  { registration: "VH-OFE", base: "SYD" },
-  { registration: "VH-VKF", base: "PER" },
+// Reserve aircraft parked on the ground across the network (one per entry).
+// Held out of the daily rotation and available at that airport for same-airport
+// swaps. Bases are IATA codes (matching the flights). Assigned to tails
+// deterministically at startup (lowest free registration of the type).
+export const RESERVE_PLAN: Array<{ base: string; type: string }> = [
+  // Main hubs: a narrowbody + a widebody on the ground.
+  { base: "SYD", type: "A320" }, { base: "SYD", type: "B788" },
+  { base: "MEL", type: "A320" }, { base: "MEL", type: "B788" },
+  { base: "BNE", type: "A320" }, { base: "BNE", type: "B788" },
+  { base: "PER", type: "A21N" }, { base: "PER", type: "B788" },
+  // Major ports: a narrowbody each.
+  { base: "ADL", type: "A320" },
+  { base: "OOL", type: "A320" },
+  { base: "CNS", type: "A20N" },
+  { base: "HBA", type: "A320" },
+  { base: "CBR", type: "A320" },
+  { base: "DRW", type: "A21N" },
+  { base: "TSV", type: "A320" },
+  { base: "LST", type: "A320" },
+  { base: "NTL", type: "A320" },
+  { base: "MCY", type: "A320" },
+  { base: "AKL", type: "A20N" },
+  { base: "CHC", type: "A320" },
 ];

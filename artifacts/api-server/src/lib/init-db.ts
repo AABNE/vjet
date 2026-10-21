@@ -1,7 +1,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import bcrypt from "bcryptjs";
-import { LIVERY_REGOS, HUB_RESERVES } from "../data/livery-regos";
+import { LIVERY_REGOS, RESERVE_PLAN } from "../data/livery-regos";
 
 export async function initDb(): Promise<void> {
   const client = await pool.connect();
@@ -359,11 +359,21 @@ export async function initDb(): Promise<void> {
         liveryAdded += r.rowCount ?? 0;
       }
     }
-    // Keep four reserve aircraft parked at the main hubs (one each).
-    for (const { registration, base } of HUB_RESERVES) {
-      await client.query(`UPDATE "aircraft" SET "base" = $2 WHERE registration = $1`, [registration, base]);
-    }
     if (liveryAdded) logger.info({ liveryAdded }, "Added livery registrations to fleet");
+
+    // Park reserve aircraft on the ground across the network (idempotent &
+    // deterministic): clear all bases, then assign the lowest free active tail of
+    // each required type to each airport in the plan.
+    await client.query(`UPDATE "aircraft" SET "base" = NULL`);
+    let reservesSet = 0;
+    for (const { base, type } of RESERVE_PLAN) {
+      const { rows: pick } = await client.query(
+        `SELECT registration FROM "aircraft" WHERE type = $1 AND status = 'active' AND "base" IS NULL ORDER BY registration LIMIT 1`,
+        [type],
+      );
+      if (pick[0]) { await client.query(`UPDATE "aircraft" SET "base" = $2 WHERE registration = $1`, [pick[0].registration, base]); reservesSet++; }
+    }
+    logger.info({ reservesSet }, "Parked reserve aircraft across the network");
 
     // Seed default admin if no users exist
     const { rows } = await client.query(`SELECT id FROM "users" LIMIT 1`);
