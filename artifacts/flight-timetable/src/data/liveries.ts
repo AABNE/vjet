@@ -55,8 +55,8 @@ export const LIVERIES: LiveryAddon[] = [
     fleet: "A321",
     entries: [
       { sim: "MSFS 2020 & 2024", registrations: "VH-VWN", livery: "Fenix A321 IAE — 8K w/ interior (sharklets)", url: "https://flightsim.to/addon/80002/fenix-a321-iae-jetstar-vh-vwn-8k-with-interior" },
-      { sim: "MSFS 2020 & 2024", registrations: "VH-VWW, VH-VWX", livery: "8K w/ cabin", url: "https://flightsim.to/addon/80130/jetstar-a321-vh-vww-vh-vwx-8k-w-cabin" },
-      { sim: "MSFS 2020 & 2024", registrations: "VH-VWQ", livery: "A321SL — 8K or 4K w/ cabin", url: "https://flightsim.to/addon/84496/jetstar-a321sl-vh-vwq-8k-or-4k-w-cabin" },
+      { sim: "MSFS 2020", registrations: "VH-VWW, VH-VWX", livery: "8K w/ cabin", url: "https://flightsim.to/addon/80130/jetstar-a321-vh-vww-vh-vwx-8k-w-cabin" },
+      { sim: "MSFS 2020", registrations: "VH-VWQ", livery: "A321SL — 8K or 4K w/ cabin", url: "https://flightsim.to/addon/84496/jetstar-a321sl-vh-vwq-8k-or-4k-w-cabin" },
     ],
   },
   {
