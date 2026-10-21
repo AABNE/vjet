@@ -5,7 +5,7 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Plane, Loader2, Plus } from "lucide-react";
 
 interface Ac { registration: string; type: string; status: string; note: string | null; base: string | null; assigned: boolean }
-const TYPES = ["A320", "A20N", "A21N", "B788"];
+const TYPES = ["A320", "A321", "A20N", "A21N", "B788"];
 const STATUS_STYLE: Record<string, string> = { active: "bg-emerald-50 text-emerald-700", maintenance_hold: "bg-red-100 text-red-700", grounded: "bg-[#f3f4f6] text-[#6b7280]" };
 
 export default function Fleet() {

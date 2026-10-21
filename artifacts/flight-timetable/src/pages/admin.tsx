@@ -27,10 +27,11 @@ import {
   X,
 } from "lucide-react";
 
-type AircraftType = "A320" | "A20N" | "A21N" | "B788";
+type AircraftType = "A320" | "A321" | "A20N" | "A21N" | "B788";
 
 const fleetOptions: { code: AircraftType; label: string }[] = [
   { code: "A320", label: "A320-200" },
+  { code: "A321", label: "A321" },
   { code: "A20N", label: "A320neo" },
   { code: "A21N", label: "A321neo LR" },
   { code: "B788", label: "787-8" },

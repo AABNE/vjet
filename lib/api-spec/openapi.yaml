@@ -645,7 +645,7 @@ components:
 
     AircraftCode:
       type: string
-      enum: [A320, A20N, A21N, B788]
+      enum: [A320, A321, A20N, A21N, B788]
 
     SimulatorVersion:
       type: string

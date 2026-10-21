@@ -32,8 +32,8 @@ const router: IRouter = Router();
 const DISCORD_API = "https://discord.com/api/v10";
 const USER_AGENT = "vJetstar (Render, +https://github.com/AABNE/vjet)";
 
-// Canonical vJetstar fleet codes — must match the pilot hub (A320, A20N, A21N, B788).
-const ALLOWED_AIRCRAFT = ["A320", "A20N", "A21N", "B788"];
+// Canonical vJetstar fleet codes — must match the pilot hub (A320, A321, A20N, A21N, B788).
+const ALLOWED_AIRCRAFT = ["A320", "A321", "A20N", "A21N", "B788"];
 
 function botHeaders(token: string): Record<string, string> {
   return {

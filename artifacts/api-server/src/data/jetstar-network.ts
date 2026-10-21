@@ -8,8 +8,8 @@
 // flight numbers are assigned deterministically — but routes, aircraft and
 // days-of-operation mirror reality (some ports only see service on some days).
 //
-// Aircraft codes match the hub fleet: A320, A20N (A320neo), A21N (A321neo/LR),
-// B788 (787-8).
+// Aircraft codes match the hub fleet: A320, A321 (A321ceo), A20N (A320neo),
+// A21N (A321neo/LR), B788 (787-8).
 
 // Day-of-week sets (0 = Sunday … 6 = Saturday), used for days-of-operation.
 export const DAILY = [0, 1, 2, 3, 4, 5, 6];
@@ -62,7 +62,7 @@ export const AIRPORT_TZ: Record<string, string> = {
 export interface RoutePair {
   a: string;
   b: string;
-  ac: "A320" | "A20N" | "A21N" | "B788";
+  ac: "A320" | "A321" | "A20N" | "A21N" | "B788";
   durationMin: number;
   freq: number;
   days: number[];
@@ -125,6 +125,21 @@ export const ROUTE_PAIRS: RoutePair[] = [
   { a: "NTL", b: "OOL", ac: "A320", durationMin: 75, freq: 1, days: WEEKEND },
   { a: "CBR", b: "MEL", ac: "A320", durationMin: 65, freq: 2, days: DAILY },
   { a: "CBR", b: "BNE", ac: "A320", durationMin: 110, freq: 1, days: MON_WED_FRI },
+
+  // ── Domestic trunk + leisure (A321ceo) ──────────────────────────────────────
+  // The A321ceo (IAE, VH-VW_) works high-demand domestic sectors. A connected
+  // east-coast + leisure network so the rotation solver chains the tails.
+  { a: "SYD", b: "MEL", ac: "A321", durationMin: 95, freq: 4, days: DAILY },
+  { a: "SYD", b: "BNE", ac: "A321", durationMin: 95, freq: 3, days: DAILY },
+  { a: "SYD", b: "OOL", ac: "A321", durationMin: 85, freq: 3, days: DAILY },
+  { a: "SYD", b: "ADL", ac: "A321", durationMin: 140, freq: 2, days: DAILY },
+  { a: "SYD", b: "CNS", ac: "A321", durationMin: 180, freq: 1, days: DAILY },
+  { a: "SYD", b: "HBA", ac: "A321", durationMin: 115, freq: 1, days: DAILY },
+  { a: "MEL", b: "BNE", ac: "A321", durationMin: 130, freq: 3, days: DAILY },
+  { a: "MEL", b: "OOL", ac: "A321", durationMin: 130, freq: 2, days: DAILY },
+  { a: "MEL", b: "ADL", ac: "A321", durationMin: 80, freq: 2, days: DAILY },
+  { a: "MEL", b: "HBA", ac: "A321", durationMin: 75, freq: 2, days: DAILY },
+  { a: "BNE", b: "CNS", ac: "A321", durationMin: 170, freq: 1, days: DAILY },
 
   // ── New Zealand domestic (A320) ─────────────────────────────────────────────
   { a: "AKL", b: "CHC", ac: "A320", durationMin: 80, freq: 6, days: DAILY },

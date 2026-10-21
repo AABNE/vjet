@@ -2,7 +2,7 @@
 // fleet code so pilots see only liveries relevant to their assigned aircraft.
 // Links are to flightsim.to (open externally). Do not invent registrations.
 
-export type FleetCode = "A320" | "A20N" | "A21N" | "B788";
+export type FleetCode = "A320" | "A321" | "A20N" | "A21N" | "B788";
 export type SimVersion = "MSFS 2020" | "MSFS 2024" | "MSFS 2020 & 2024";
 
 export interface LiveryEntry {
@@ -21,6 +21,7 @@ export interface LiveryAddon {
 
 export const FLEET_LABELS: Record<FleetCode, string> = {
   A320: "Airbus A320",
+  A321: "Airbus A321",
   A20N: "Airbus A320neo",
   A21N: "Airbus A321neo",
   B788: "Boeing 787",
@@ -46,6 +47,16 @@ export const LIVERIES: LiveryAddon[] = [
     fleet: "A320",
     entries: [
       { sim: "MSFS 2020", registrations: "VH-VGF", livery: "10th Anniversary / Jetstar Generation", url: "https://flightsim.to/addon/98911/jetstar-australia-10th-anniversary-jetstargeneration-vh-vgf-latinvfr-a320-ceo-iae-8k" },
+    ],
+  },
+  {
+    addon: "Fenix A321 (IAE)",
+    developer: "Fenix Simulations",
+    fleet: "A321",
+    entries: [
+      { sim: "MSFS 2020 & 2024", registrations: "VH-VWN", livery: "Fenix A321 IAE — 8K w/ interior (sharklets)", url: "https://flightsim.to/addon/80002/fenix-a321-iae-jetstar-vh-vwn-8k-with-interior" },
+      { sim: "MSFS 2020 & 2024", registrations: "VH-VWW, VH-VWX", livery: "8K w/ cabin", url: "https://flightsim.to/addon/80130/jetstar-a321-vh-vww-vh-vwx-8k-w-cabin" },
+      { sim: "MSFS 2020 & 2024", registrations: "VH-VWQ", livery: "A321SL — 8K or 4K w/ cabin", url: "https://flightsim.to/addon/84496/jetstar-a321sl-vh-vwq-8k-or-4k-w-cabin" },
     ],
   },
   {

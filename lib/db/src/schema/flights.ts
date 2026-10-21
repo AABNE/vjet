@@ -7,7 +7,7 @@ export const flightsTable = pgTable("flights", {
   flightNumber: text("flight_number").notNull(),
   departure: text("departure").notNull(),
   arrival: text("arrival").notNull(),
-  aircraft: text("aircraft").notNull(), // "A320", "A20N", "A21N", "B788"
+  aircraft: text("aircraft").notNull(), // "A320", "A321", "A20N", "A21N", "B788"
   departureTime: text("departure_time").notNull(), // origin LOCAL time, e.g. "06:30"
   flightDate: text("flight_date").notNull(), // origin LOCAL date, e.g. "2026-04-05"
   durationMinutes: integer("duration_minutes").notNull(),
