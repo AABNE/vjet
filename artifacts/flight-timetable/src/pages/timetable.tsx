@@ -63,6 +63,16 @@ function simbriefUrl(entry: any, simbriefId: string | null) {
   return `https://dispatch.simbrief.com/options/custom?${params.toString()}`;
 }
 
+// Deep-link that pre-builds a SimBrief custom airframe for one registration —
+// the pilot opens it and SimBrief saves it as an airframe on their account.
+function airframeUrl(type: string, reg: string, simbriefId: string | null) {
+  const params = new URLSearchParams({ airline: "JST", type, reg });
+  const fin = reg.replace(/[^A-Za-z0-9]/g, "").slice(-3).toUpperCase();
+  if (fin) params.set("fin", fin);
+  if (simbriefId) params.set("pilotid", simbriefId);
+  return `https://dispatch.simbrief.com/options/custom?${params.toString()}`;
+}
+
 function EmptyState() {
   return (
     <div className="rounded-2xl border-2 border-dashed border-[#e5e7eb] bg-white p-14 text-center">
@@ -260,8 +270,15 @@ export default function Timetable() {
 
                   {/* Footer actions */}
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f3f4f6] pt-4">
-                    <div className="font-mono text-[10px] uppercase tracking-wider text-[#9ca3af]">
-                      {entry.flight.aircraft} · {regFor(entry.id) ?? "TBA"}
+                    <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-[#9ca3af]">
+                      <span>{entry.flight.aircraft} · {regFor(entry.id) ?? "TBA"}</span>
+                      {regFor(entry.id) && (
+                        <a href={airframeUrl(entry.flight.aircraft, regFor(entry.id)!, simbriefId)} target="_blank" rel="noopener noreferrer"
+                          title={`Add airframe ${regFor(entry.id)} to SimBrief`}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6b7280] transition hover:border-[#fb5713] hover:text-[#fb5713]">
+                          <Plane className="h-3 w-3" />
+                        </a>
+                      )}
                       {entry.status.toLowerCase() === "active" && entry.startedAt && (
                         <> · <Clock3 className="mr-0.5 inline h-3 w-3" />Started {fmt(entry.startedAt)}</>
                       )}
