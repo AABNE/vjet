@@ -28,10 +28,16 @@ router.get("/flights", async (req, res): Promise<void> => {
     .orderBy(asc(flightsTable.departsAt))
     .limit(400);
 
-  // Routes already in anyone's active/pending timetable disappear
+  // Routes already in anyone's active/pending timetable disappear — EXCEPT a
+  // sector the AI is only slated to fly (a virtual entry that hasn't departed
+  // yet). Those stay on the timetable so a pilot can still take one over; once
+  // the AI flight is airborne (active) or done, it drops off like any other.
   const takenEntries = await db.select().from(timetableTable);
   const takenFlightIds = new Set(
-    takenEntries.filter(e => e.status !== "completed").map(e => e.flightId)
+    takenEntries
+      .filter(e => e.status !== "completed")
+      .filter(e => !(e.isVirtual && e.status === "pending"))
+      .map(e => e.flightId)
   );
 
   // Realistic routing: if the pilot has it on, they continue from where their

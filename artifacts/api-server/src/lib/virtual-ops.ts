@@ -20,9 +20,11 @@ import { getWeather, isAdverse } from "./weather";
 const VIRTUAL_PILOTS = Array.from({ length: 12 }, (_, i) => `autopilot-${i + 1}`);
 const VIRTUAL_HASH = "!virtual-no-login"; // not a valid bcrypt hash → can't log in
 
-// Claim a flight once it's inside the pickup cutoff (humans can no longer take
-// it) and up to 90 min after departure (so missed sectors still get flown).
-const CLAIM_AHEAD_MS = 28 * 60_000;
+// The AI slates its sectors a couple of hours ahead so they show on the
+// timetable as "scheduled to fly" — a pilot can still take one over right up to
+// the pickup cutoff; past that the AI flies it. Also picks up to 90 min after
+// departure so missed sectors still get flown.
+const CLAIM_AHEAD_MS = 2 * 60 * 60_000;
 const CLAIM_BEHIND_MS = 90 * 60_000;
 const CLEANUP_AGE_MS = 3 * 24 * 60 * 60_000;
 

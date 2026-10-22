@@ -116,6 +116,14 @@ router.post("/timetable", async (req, res): Promise<void> => {
     return;
   }
 
+  // If the AI was only slated to fly this sector (virtual, not yet departed),
+  // hand it over to the human taking it.
+  await db.delete(timetableTable).where(and(
+    eq(timetableTable.flightId, flightId),
+    eq(timetableTable.isVirtual, true),
+    eq(timetableTable.status, "pending"),
+  ));
+
   const [entry] = await db
     .insert(timetableTable)
     .values({
