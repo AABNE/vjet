@@ -177,15 +177,35 @@ const tutorialSteps = [
   },
 ];
 
-function TutorialModal({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState(0);
-  const current = tutorialSteps[step];
-  const isLast = step === tutorialSteps.length - 1;
+// Save just the SimBrief Pilot ID (profile PATCH needs the other fields too, so
+// we send the pilot's current sim version + aircraft unchanged).
+async function patchSimbrief(pilot: any, value: string): Promise<void> {
+  await fetch("/api/auth/profile", {
+    method: "PATCH", credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      simulatorVersion: pilot.simulatorVersion,
+      aircraft: pilot.aircraft,
+      simbriefUsername: value.trim() || null,
+    }),
+  });
+}
 
-  const handleDone = async () => {
+function TutorialModal({ pilot, onDone }: { pilot: any; onDone: () => void }) {
+  const [step, setStep] = useState(0);
+  const [sbId, setSbId] = useState<string>(pilot.simbriefUsername || "");
+  const [saving, setSaving] = useState(false);
+  const isSimbriefStep = step === tutorialSteps.length; // extra final screen
+  const totalDots = tutorialSteps.length + 1;
+  const current = tutorialSteps[step];
+
+  const finish = async () => {
+    setSaving(true);
     try {
+      if (sbId.trim()) await patchSimbrief(pilot, sbId);
       await fetch("/api/auth/tutorial-seen", { method: "PATCH", credentials: "include" });
     } catch { /* swallow */ }
+    setSaving(false);
     onDone();
   };
 
@@ -198,19 +218,36 @@ function TutorialModal({ onDone }: { onDone: () => void }) {
               <VJetstarLogo height={28} light />
               <span className="font-mono text-[9px] uppercase tracking-[.2em] text-white/40">Quick start</span>
             </div>
-            <button onClick={handleDone} className="rounded-lg p-1 text-white/40 transition hover:text-white/70">
+            <button onClick={finish} className="rounded-lg p-1 text-white/40 transition hover:text-white/70">
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
         <div className="p-6">
-          <div className="mb-4 text-4xl">{current.icon}</div>
-          <h2 className="text-2xl font-black uppercase tracking-tight text-[#1a1a1a]">{current.title}</h2>
-          <p className="mt-3 text-sm leading-relaxed text-[#6b7280]">{current.body}</p>
+          {isSimbriefStep ? (
+            <>
+              <div className="mb-4 text-4xl">📋</div>
+              <h2 className="text-2xl font-black uppercase tracking-tight text-[#1a1a1a]">Your SimBrief Pilot ID</h2>
+              <p className="mt-3 text-sm leading-relaxed text-[#6b7280]">
+                Pop in your SimBrief Pilot ID so you can import flight plans with one click. You'll find it on your{" "}
+                <a href="https://www.simbrief.com/system/profile.php" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#fb5713] hover:underline">SimBrief account page</a>.
+              </p>
+              <input
+                value={sbId} onChange={(e) => setSbId(e.target.value)} placeholder="e.g. 123456"
+                className="mt-4 h-11 w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm outline-none focus:border-[#fb5713]" />
+              <p className="mt-1.5 text-[11px] text-[#9ca3af]">You can always change it later in Settings.</p>
+            </>
+          ) : (
+            <>
+              <div className="mb-4 text-4xl">{current.icon}</div>
+              <h2 className="text-2xl font-black uppercase tracking-tight text-[#1a1a1a]">{current.title}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-[#6b7280]">{current.body}</p>
+            </>
+          )}
 
           {/* Step dots */}
           <div className="mt-6 flex items-center gap-1.5">
-            {tutorialSteps.map((_, i) => (
+            {Array.from({ length: totalDots }).map((_, i) => (
               <button key={i} onClick={() => setStep(i)}
                 className={`h-1.5 rounded-full transition-all ${i === step ? "w-6 bg-[#fb5713]" : "w-1.5 bg-[#d1d5db] hover:bg-[#9ca3af]"}`} />
             ))}
@@ -221,10 +258,10 @@ function TutorialModal({ onDone }: { onDone: () => void }) {
               className="rounded-xl border border-[#e5e7eb] px-4 py-2 text-xs font-semibold text-[#6b7280] transition hover:bg-[#f3f4f6] disabled:opacity-0">
               Back
             </button>
-            {isLast ? (
-              <button onClick={handleDone}
-                className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#e04d0e]">
-                <Check className="h-4 w-4" /> Get started
+            {isSimbriefStep ? (
+              <button onClick={finish} disabled={saving}
+                className="flex items-center gap-2 rounded-xl bg-[#fb5713] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#e04d0e] disabled:opacity-50">
+                <Check className="h-4 w-4" /> {saving ? "Saving…" : "Get started"}
               </button>
             ) : (
               <button onClick={() => setStep(s => s + 1)}
@@ -234,6 +271,53 @@ function TutorialModal({ onDone }: { onDone: () => void }) {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Shown on later logins to pilots who still have no SimBrief ID — they must set
+// one to continue (no dismiss).
+function SimBriefGateModal({ pilot, onDone }: { pilot: any; onDone: () => void }) {
+  const [sbId, setSbId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sbId.trim()) { setErr("Enter your SimBrief Pilot ID to continue."); return; }
+    setSaving(true); setErr("");
+    try { await patchSimbrief(pilot, sbId); onDone(); }
+    catch { setErr("Couldn't save — please try again."); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="bg-[#fb5713] px-6 py-5 text-white">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📋</span>
+            <div>
+              <h2 className="font-black uppercase tracking-tight">Add your SimBrief ID</h2>
+              <p className="mt-0.5 text-xs text-white/80">We still need your SimBrief Pilot ID to dispatch your flights.</p>
+            </div>
+          </div>
+        </div>
+        <form onSubmit={submit} className="space-y-4 p-6">
+          <div>
+            <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-[.16em] text-[#6b7280]">SimBrief Pilot ID</label>
+            <input value={sbId} onChange={(e) => setSbId(e.target.value)} autoFocus placeholder="e.g. 123456"
+              className="h-10 w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm outline-none focus:border-[#fb5713]" />
+            <p className="mt-1.5 text-[11px] text-[#9ca3af]">
+              Find it on your <a href="https://www.simbrief.com/system/profile.php" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#fb5713] hover:underline">SimBrief account page</a>.
+            </p>
+          </div>
+          {err && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
+          <button type="submit" disabled={saving}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#fb5713] py-3 text-sm font-bold text-white transition hover:bg-[#e04d0e] disabled:opacity-50">
+            {saving ? "Saving…" : "Save and continue"}<ArrowRight className="h-4 w-4" />
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -263,6 +347,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   // Local state to dismiss the modals for this session after handling
   const [pwDone, setPwDone] = useState(false);
   const [tutDone, setTutDone] = useState(false);
+  const [sbDone, setSbDone] = useState(false);
 
   // Collapsible sidebar (slides away); preference persisted per browser.
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem("vj-nav") !== "0"; } catch { return true; } });
@@ -303,6 +388,10 @@ function Layout({ children }: { children: React.ReactNode }) {
   const needsPasswordChange = pilot.mustChangePassword && !pwDone;
   // Show tutorial only after password is set (if needed), and only once
   const needsTutorial = !needsPasswordChange && !pilot.hasSeenTutorial && !tutDone;
+  // On later logins, a pilot who's past the tutorial but still has no SimBrief
+  // ID must set one before continuing (not re-prompted the same session they
+  // just finished the tutorial).
+  const needsSimbrief = !needsPasswordChange && !needsTutorial && !tutDone && pilot.hasSeenTutorial && !pilot.simbriefUsername && !sbDone;
 
   // Shared cockpit: full-width, no sidebar — just the flight and a leave button
   // (the page itself provides the Leave control).
@@ -322,7 +411,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] bg-[#f9fafb] text-[#1a1a1a]">
       {needsPasswordChange && <ForcePasswordModal onDone={() => setPwDone(true)} />}
-      {needsTutorial && <TutorialModal onDone={() => setTutDone(true)} />}
+      {needsTutorial && <TutorialModal pilot={pilot} onDone={() => { setTutDone(true); qc.invalidateQueries({ queryKey: getGetMeQueryKey() }); }} />}
+      {needsSimbrief && <SimBriefGateModal pilot={pilot} onDone={() => { setSbDone(true); qc.invalidateQueries({ queryKey: getGetMeQueryKey() }); }} />}
       <AutoFlightTimer />
 
       <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between border-b border-[#e5e7eb] bg-white/90 px-3 backdrop-blur md:px-5">
