@@ -64,6 +64,11 @@ export default function Admin() {
   });
   const avatars = avatarsQ.data?.avatars ?? {};
 
+  const infoQ = useQuery<{ info: Record<number, { missing: string[] }> }>({
+    queryKey: ["admin-account-info"], queryFn: () => apiGet("/api/admin/account-info"), retry: false,
+  });
+  const accountInfo = infoQ.data?.info ?? {};
+
   const hubReqQ = useQuery<{ enabled: boolean }>({ queryKey: ["require-hub"], queryFn: () => apiGet("/api/ops/require-hub"), retry: false });
   const [hubReqBusy, setHubReqBusy] = useState(false);
   async function toggleHubReq() {
@@ -679,6 +684,7 @@ export default function Admin() {
               key={p.id}
               pilot={p}
               avatarUrl={avatars[p.id]}
+              missing={accountInfo[p.id]?.missing ?? []}
               onSave={(id, data) => update.mutate({ id, data })}
               onDelete={(id) => {
                 if (window.confirm(`Remove pilot ${p.username}?`)) {
@@ -781,12 +787,14 @@ export default function Admin() {
 function PilotRow({
   pilot,
   avatarUrl,
+  missing = [],
   onSave,
   onDelete,
   busy,
 }: {
   pilot: any;
   avatarUrl?: string;
+  missing?: string[];
   onSave: (id: number, data: any) => void;
   onDelete: (id: number) => void;
   busy: boolean;
@@ -829,6 +837,11 @@ function PilotRow({
             >
               {pilot.username}
               {pilot.isAdmin && <span className="font-mono text-[9px] uppercase tracking-wider text-[#fb5713]">· Admin</span>}
+              {missing.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700" title={`Missing: ${missing.join(", ")}`}>
+                  <AlertTriangle className="h-2.5 w-2.5" />Missing {missing.join(" · ")}
+                </span>
+              )}
             </div>
             <div className="mt-1 font-mono text-[9px] uppercase text-[#9ca3af]">
               ID {pilot.id} · SimBrief: {pilot.simbriefUsername || "not set"} · CID: {pilot.cid || "not set"}

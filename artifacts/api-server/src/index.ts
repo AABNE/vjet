@@ -8,6 +8,7 @@ import { startSelfKeepalive } from "./lib/keepalive";
 import { registerDiscordCommands } from "./lib/discord-commands";
 import { cleanupOrphanCockpitVcs } from "./lib/discord-vc";
 import { startCockpitReaper } from "./lib/cockpit";
+import { backfillFromApplications } from "./lib/account-info";
 
 const rawPort = process.env["PORT"];
 
@@ -55,5 +56,8 @@ initDb().then(() => {
 
     // End abandoned shared cockpits + delete their voice channels.
     startCockpitReaper();
+
+    // Fill any accepted pilots' missing CID / Discord from their application.
+    void backfillFromApplications().catch((err) => logger.error({ err }, "account backfill failed"));
   });
 });

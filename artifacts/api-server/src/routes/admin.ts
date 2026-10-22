@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { db, usersTable, timetableTable, flightsTable, userReportsTable, eq, ne, desc } from "@workspace/db";
 import { addInfraction, notify } from "../lib/ops";
 import { listSessionsForAdmin } from "../lib/cockpit";
+import { backfillFromApplications } from "../lib/account-info";
 
 import {
   CreateAdminUserBody,
@@ -88,6 +89,28 @@ router.get("/admin/avatars", async (req, res): Promise<void> => {
   const map: Record<number, string> = {};
   for (const u of users) if (u.avatarUrl) map[u.id] = u.avatarUrl;
   res.json({ avatars: map });
+});
+
+// Which account details each pilot is still missing (for the admin list).
+router.get("/admin/account-info", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const users = await db.select().from(usersTable).where(eq(usersTable.isVirtual, false));
+  const info: Record<number, { missing: string[] }> = {};
+  for (const u of users) {
+    const missing: string[] = [];
+    if (!u.cid) missing.push("CID");
+    if (!u.discordId) missing.push("Discord");
+    if (!u.simbriefUsername) missing.push("SimBrief");
+    info[u.id] = { missing };
+  }
+  res.json({ info });
+});
+
+// Re-run the application backfill on demand (also runs on boot).
+router.post("/admin/backfill-info", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const filled = await backfillFromApplications();
+  res.json({ ok: true, filled });
 });
 
 router.get("/admin/users", async (req, res): Promise<void> => {
