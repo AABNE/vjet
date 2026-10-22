@@ -710,6 +710,11 @@ router.post("/discord-interactions", async (req: Request, res: Response): Promis
           hasSeenTutorial: "false",
           mustChangePassword: "true",
           discordId: applicantId,
+          // Carry the applicant's VATSIM CID + tracking choice onto the account
+          // (CID needed for closer VATSIM integration later).
+          cid: appRow.cid ?? null,
+          trackingMethod: appRow.trackingMethod ?? "simlink",
+          volantaUsername: appRow.volantaUsername ?? null,
         }).onConflictDoNothing({ target: usersTable.username }).returning();
 
         accountCreated = inserted.length > 0;
