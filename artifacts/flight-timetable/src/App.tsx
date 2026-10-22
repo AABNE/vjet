@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient, useQuery } from "@tanstack/react-query";
+import { apiGet } from "@/lib/api";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
@@ -323,6 +324,82 @@ function SimBriefGateModal({ pilot, onDone }: { pilot: any; onDone: () => void }
   );
 }
 
+// ─── Ban gate ────────────────────────────────────────────────────────────────
+interface AccountFlags { banned: boolean; banReason: string | null; appealStatus: string; isOwner: boolean }
+function BanGate({ flags, onExit, refresh }: { flags: AccountFlags; onExit: () => void; refresh: () => void }) {
+  const [mode, setMode] = useState<"menu" | "appeal">("menu");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submitted = flags.appealStatus === "submitted";
+  const denied = flags.appealStatus === "denied";
+
+  const appeal = async () => {
+    if (!text.trim()) { setErr("Write your appeal first."); return; }
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/auth/appeal", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      if (!res.ok) throw new Error();
+      refresh();
+    } catch { setErr("Couldn't send your appeal. Try again."); }
+    finally { setBusy(false); }
+  };
+  const deleteAccount = async () => {
+    if (!window.confirm("Delete your account permanently? This can't be undone.")) return;
+    setBusy(true);
+    try { await fetch("/api/auth/account-self-delete", { method: "POST", credentials: "include" }); } catch { /* */ }
+    onExit();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1a1a1a] p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="bg-red-600 px-6 py-5 text-white">
+          <h2 className="font-black uppercase tracking-tight">Account suspended</h2>
+          <p className="mt-0.5 text-xs text-white/85">Your vJetstar account has been banned.</p>
+        </div>
+        <div className="p-6">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-red-500">Reason</span>
+            <p className="mt-1">{flags.banReason || "No reason provided."}</p>
+          </div>
+
+          {submitted ? (
+            <p className="mt-4 text-sm text-[#6b7280]">Your appeal has been submitted and is under review. You'll be notified of the outcome.</p>
+          ) : denied ? (
+            <p className="mt-4 text-sm text-[#6b7280]">Your appeal was reviewed and <span className="font-bold text-red-600">denied</span>. If you don't wish to stay, you can delete your account below.</p>
+          ) : mode === "appeal" ? (
+            <div className="mt-4">
+              <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-[.16em] text-[#6b7280]">Your appeal</label>
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} autoFocus placeholder="Explain why your account should be reinstated…"
+                className="w-full resize-none rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm outline-none focus:border-[#fb5713]" />
+              {err && <p className="mt-1 text-xs text-red-500">{err}</p>}
+              <div className="mt-3 flex gap-2">
+                <button onClick={() => setMode("menu")} disabled={busy} className="flex-1 rounded-xl border border-[#e5e7eb] px-4 py-2.5 text-sm font-bold text-[#6b7280] hover:bg-[#f3f4f6]">Back</button>
+                <button onClick={appeal} disabled={busy} className="flex-1 rounded-xl bg-[#fb5713] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#e04d0e] disabled:opacity-50">{busy ? "Sending…" : "Submit appeal"}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm text-[#6b7280]">You can appeal this ban, or if you'd rather not, delete your account.</p>
+              <button onClick={() => setMode("appeal")} className="w-full rounded-xl bg-[#fb5713] py-3 text-sm font-bold text-white hover:bg-[#e04d0e]">Appeal this ban</button>
+              <button onClick={deleteAccount} disabled={busy} className="w-full rounded-xl border border-red-200 py-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50">I won't appeal — delete my account</button>
+            </div>
+          )}
+
+          {(submitted || denied) && (
+            <button onClick={submitted ? onExit : deleteAccount} disabled={busy}
+              className={`mt-3 w-full rounded-xl py-3 text-sm font-bold disabled:opacity-50 ${submitted ? "border border-[#e5e7eb] text-[#6b7280] hover:bg-[#f3f4f6]" : "border border-red-200 text-red-600 hover:bg-red-50"}`}>
+              {submitted ? "Log out" : "Delete my account"}
+            </button>
+          )}
+          <button onClick={onExit} className="mt-3 w-full text-center text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] hover:text-[#6b7280]">Log out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main layout ────────────────────────────────────────────────────────────
 function Layout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -348,6 +425,10 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [pwDone, setPwDone] = useState(false);
   const [tutDone, setTutDone] = useState(false);
   const [sbDone, setSbDone] = useState(false);
+
+  // Ban/appeal flags (hand-written endpoint, separate from the /me zod).
+  const flagsQ = useQuery<AccountFlags>({ queryKey: ["account-flags"], queryFn: () => apiGet("/api/auth/account-flags"), enabled: !!user, retry: false });
+  const flags = flagsQ.data;
 
   // Collapsible sidebar (slides away); preference persisted per browser.
   const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem("vj-nav") !== "0"; } catch { return true; } });
@@ -385,6 +466,16 @@ function Layout({ children }: { children: React.ReactNode }) {
   if (!user) return <>{children}</>;
 
   const pilot = user as any;
+
+  // Ban gate takes precedence over everything else.
+  if (flags?.banned) {
+    return (
+      <div className="min-h-[100dvh] bg-[#1a1a1a]">
+        <BanGate flags={flags} refresh={() => flagsQ.refetch()} onExit={() => logout.mutate()} />
+      </div>
+    );
+  }
+
   const needsPasswordChange = pilot.mustChangePassword && !pwDone;
   // Show tutorial only after password is set (if needed), and only once
   const needsTutorial = !needsPasswordChange && !pilot.hasSeenTutorial && !tutDone;

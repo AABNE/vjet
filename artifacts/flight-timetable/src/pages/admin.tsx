@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 type AircraftType = "A320" | "A321" | "A20N" | "A21N" | "B788";
+interface AcctInfo { missing: string[]; banned: boolean; appealStatus: string; appealText: string | null; isAdmin: boolean; isOwner: boolean }
 
 const fleetOptions: { code: AircraftType; label: string }[] = [
   { code: "A320", label: "A320-200" },
@@ -64,7 +65,7 @@ export default function Admin() {
   });
   const avatars = avatarsQ.data?.avatars ?? {};
 
-  const infoQ = useQuery<{ info: Record<number, { missing: string[] }> }>({
+  const infoQ = useQuery<{ info: Record<number, AcctInfo>; viewerIsOwner: boolean }>({
     queryKey: ["admin-account-info"], queryFn: () => apiGet("/api/admin/account-info"), retry: false,
   });
   const accountInfo = infoQ.data?.info ?? {};
@@ -119,6 +120,20 @@ export default function Admin() {
   const remove = useDeleteAdminUser({
     mutation: { onSuccess: refresh },
   });
+
+  const refreshAccounts = () => { usersQ.refetch(); infoQ.refetch(); };
+  async function banUser(id: number) {
+    const reason = window.prompt("Reason for the ban (shown to the pilot):");
+    if (reason === null) return;
+    await apiPost(`/api/admin/users/${id}/ban`, { reason }).catch(() => {});
+    refreshAccounts();
+  }
+  async function unbanUser(id: number) { await apiPost(`/api/admin/users/${id}/unban`).catch(() => {}); refreshAccounts(); }
+  async function denyAppeal(id: number) { await apiPost(`/api/admin/users/${id}/deny-appeal`).catch(() => {}); refreshAccounts(); }
+  async function toggleAdmin(id: number, makeAdmin: boolean) {
+    await apiPost(`/api/admin/users/${id}/admin`, { isAdmin: makeAdmin }).catch((e: any) => window.alert(e?.message || "Couldn't change admin access."));
+    refreshAccounts();
+  }
 
   const toggle = (code: AircraftType) =>
     setAircraft((prev) =>
@@ -685,6 +700,12 @@ export default function Admin() {
               pilot={p}
               avatarUrl={avatars[p.id]}
               missing={accountInfo[p.id]?.missing ?? []}
+              acct={accountInfo[p.id]}
+              viewerIsOwner={infoQ.data?.viewerIsOwner ?? false}
+              onBan={() => banUser(p.id)}
+              onUnban={() => unbanUser(p.id)}
+              onDenyAppeal={() => denyAppeal(p.id)}
+              onToggleAdmin={(makeAdmin) => toggleAdmin(p.id, makeAdmin)}
               onSave={(id, data) => update.mutate({ id, data })}
               onDelete={(id) => {
                 if (window.confirm(`Remove pilot ${p.username}?`)) {
@@ -788,6 +809,12 @@ function PilotRow({
   pilot,
   avatarUrl,
   missing = [],
+  acct,
+  viewerIsOwner = false,
+  onBan,
+  onUnban,
+  onDenyAppeal,
+  onToggleAdmin,
   onSave,
   onDelete,
   busy,
@@ -795,6 +822,12 @@ function PilotRow({
   pilot: any;
   avatarUrl?: string;
   missing?: string[];
+  acct?: AcctInfo;
+  viewerIsOwner?: boolean;
+  onBan?: () => void;
+  onUnban?: () => void;
+  onDenyAppeal?: () => void;
+  onToggleAdmin?: (makeAdmin: boolean) => void;
   onSave: (id: number, data: any) => void;
   onDelete: (id: number) => void;
   busy: boolean;
@@ -842,23 +875,58 @@ function PilotRow({
                   <AlertTriangle className="h-2.5 w-2.5" />Missing {missing.join(" · ")}
                 </span>
               )}
+              {acct?.banned && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">Banned</span>
+              )}
+              {acct?.appealStatus === "submitted" && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-sky-700">Appeal pending</span>
+              )}
+              {acct?.isOwner && <span className="font-mono text-[9px] uppercase tracking-wider text-[#fb5713]">· Owner</span>}
             </div>
             <div className="mt-1 font-mono text-[9px] uppercase text-[#9ca3af]">
               ID {pilot.id} · SimBrief: {pilot.simbriefUsername || "not set"} · CID: {pilot.cid || "not set"}
             </div>
+            {acct?.appealStatus === "submitted" && acct.appealText && (
+              <div className="mt-2 rounded-lg bg-[#f9fafb] px-3 py-2 text-xs text-[#374151]"><span className="font-mono text-[9px] font-bold uppercase tracking-wider text-sky-600">Appeal:</span> {acct.appealText}</div>
+            )}
           </div>
         </div>
 
-        <button
-          type="button"
-          data-testid={`button-delete-pilot-${pilot.id}`}
-          onClick={() => onDelete(pilot.id)}
-          disabled={busy}
-          className="flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-2 text-[9px] font-bold uppercase text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-        >
-          <Trash2 className="h-3 w-3" />
-          Remove
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {viewerIsOwner && !acct?.isOwner && onToggleAdmin && (
+            <button type="button" onClick={() => onToggleAdmin(!acct?.isAdmin)} disabled={busy}
+              className="rounded-xl border border-[#e5e7eb] px-3 py-2 text-[9px] font-bold uppercase text-[#6b7280] transition hover:bg-[#f3f4f6] disabled:opacity-50">
+              {acct?.isAdmin ? "Remove admin" : "Make admin"}
+            </button>
+          )}
+          {acct?.banned ? (
+            <>
+              {acct.appealStatus === "submitted" && onDenyAppeal && (
+                <button type="button" onClick={onDenyAppeal} disabled={busy}
+                  className="rounded-xl border border-[#e5e7eb] px-3 py-2 text-[9px] font-bold uppercase text-[#6b7280] transition hover:bg-[#f3f4f6] disabled:opacity-50">Deny appeal</button>
+              )}
+              {onUnban && (
+                <button type="button" onClick={onUnban} disabled={busy}
+                  className="rounded-xl border border-emerald-200 px-3 py-2 text-[9px] font-bold uppercase text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50">Unban</button>
+              )}
+            </>
+          ) : (
+            !acct?.isOwner && onBan && (
+              <button type="button" onClick={onBan} disabled={busy}
+                className="rounded-xl border border-amber-200 px-3 py-2 text-[9px] font-bold uppercase text-amber-700 transition hover:bg-amber-50 disabled:opacity-50">Ban</button>
+            )
+          )}
+          <button
+            type="button"
+            data-testid={`button-delete-pilot-${pilot.id}`}
+            onClick={() => onDelete(pilot.id)}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-2 text-[9px] font-bold uppercase text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+          >
+            <Trash2 className="h-3 w-3" />
+            Remove
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">

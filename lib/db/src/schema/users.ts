@@ -31,6 +31,13 @@ export const usersTable = pgTable("users", {
   // System "virtual pilots" that fly the schedule when no human picks a flight
   // up. Hidden from the human roster; the ops layer treats them like any pilot.
   isVirtual: boolean("is_virtual").notNull().default(false),
+  // Owner (super-admin): can add/remove admin on other accounts.
+  isOwner: boolean("is_owner").notNull().default(false),
+  // Ban + appeal flow. appealStatus: "none" | "submitted" | "denied".
+  banned: boolean("banned").notNull().default(false),
+  banReason: text("ban_reason"),
+  appealText: text("appeal_text"),
+  appealStatus: text("appeal_status").notNull().default("none"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

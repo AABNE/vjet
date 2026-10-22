@@ -37,6 +37,11 @@ export async function initDb(): Promise<void> {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_url" TEXT;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cid" TEXT;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_virtual" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_owner" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "banned" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ban_reason" TEXT;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "appeal_text" TEXT;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "appeal_status" TEXT NOT NULL DEFAULT 'none';
 
       CREATE TABLE IF NOT EXISTS "flights" (
         "id"               SERIAL PRIMARY KEY,
@@ -410,6 +415,14 @@ export async function initDb(): Promise<void> {
       );
       logger.info("Default admin created — username: admin / password: admin1234");
     }
+
+    // Designate the owner (super-admin): the configured owner username, plus the
+    // bootstrap "admin" account so there's always one. Owner can toggle admin.
+    const ownerName = process.env["OWNER_USERNAME"] || "AABNE";
+    await client.query(
+      `UPDATE "users" SET "is_owner" = TRUE WHERE username = $1 OR username = 'admin'`,
+      [ownerName],
+    );
 
     logger.info("Database initialised");
   } finally {

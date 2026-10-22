@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, eq, sql } from "@workspace/db";
+import { deleteUserCascade } from "../lib/account-info";
 
 
 import {
@@ -217,6 +218,38 @@ router.patch("/auth/tutorial-seen", async (req, res): Promise<void> => {
     .set({ hasSeenTutorial: "true" })
     .where(eq(usersTable.id, req.session.userId));
 
+  res.json({ ok: true });
+});
+
+// ── Ban / appeal (hand-written so they bypass the generated /me zod) ─────────
+router.get("/auth/account-flags", async (req, res): Promise<void> => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId));
+  if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
+  res.json({ banned: u.banned, banReason: u.banReason, appealStatus: u.appealStatus, isOwner: u.isOwner });
+});
+
+router.post("/auth/appeal", async (req, res): Promise<void> => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId));
+  if (!u || !u.banned) { res.status(400).json({ error: "No active ban to appeal." }); return; }
+  if (u.appealStatus === "denied") { res.status(400).json({ error: "Your appeal has already been reviewed." }); return; }
+  const text = String(req.body?.text || "").trim().slice(0, 2000);
+  if (!text) { res.status(400).json({ error: "Write your appeal first." }); return; }
+  await db.update(usersTable).set({ appealText: text, appealStatus: "submitted" }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true });
+});
+
+// A banned pilot who chooses not to appeal deletes their own account.
+router.post("/auth/account-self-delete", async (req, res): Promise<void> => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const id = req.session.userId;
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
+  if (!u.banned) { res.status(400).json({ error: "Only a banned account can be self-deleted here." }); return; }
+  if (u.isOwner) { res.status(400).json({ error: "The owner account can't be deleted." }); return; }
+  await deleteUserCascade(id);
+  req.session.destroy(() => {});
   res.json({ ok: true });
 });
 

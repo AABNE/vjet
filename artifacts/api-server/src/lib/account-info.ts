@@ -1,8 +1,23 @@
 // Backfill pilot accounts from their original application: match by the hub
 // username they chose, and fill in anything the account is missing (VATSIM CID,
 // linked Discord, tracking choice) without ever overwriting data already set.
-import { db, eq, usersTable, applicationsTable } from "@workspace/db";
+import {
+  db, eq, or, usersTable, applicationsTable,
+  notificationsTable, pilotDisciplineTable, pilotInfractionsTable, userReportsTable, timetableTable,
+} from "@workspace/db";
 import { logger } from "./logger";
+
+// Delete a user and every row that references them, in FK-safe order. Without
+// this, deleting an account that has notifications / discipline / reports /
+// flights fails with a foreign-key 500.
+export async function deleteUserCascade(id: number): Promise<void> {
+  await db.delete(notificationsTable).where(eq(notificationsTable.userId, id));
+  await db.delete(pilotInfractionsTable).where(eq(pilotInfractionsTable.userId, id));
+  await db.delete(pilotDisciplineTable).where(eq(pilotDisciplineTable.userId, id));
+  await db.delete(userReportsTable).where(or(eq(userReportsTable.reporterId, id), eq(userReportsTable.reportedId, id)));
+  await db.delete(timetableTable).where(eq(timetableTable.userId, id));
+  await db.delete(usersTable).where(eq(usersTable.id, id));
+}
 
 export async function backfillFromApplications(): Promise<number> {
   const apps = await db.select().from(applicationsTable);

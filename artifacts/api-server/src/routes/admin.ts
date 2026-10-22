@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { db, usersTable, timetableTable, flightsTable, userReportsTable, eq, ne, desc } from "@workspace/db";
 import { addInfraction, notify } from "../lib/ops";
 import { listSessionsForAdmin } from "../lib/cockpit";
-import { backfillFromApplications } from "../lib/account-info";
+import { backfillFromApplications, deleteUserCascade } from "../lib/account-info";
 
 import {
   CreateAdminUserBody,
@@ -91,19 +91,25 @@ router.get("/admin/avatars", async (req, res): Promise<void> => {
   res.json({ avatars: map });
 });
 
-// Which account details each pilot is still missing (for the admin list).
+// Per-pilot account state for the admin list: what's missing, ban/appeal
+// status, admin flag — plus whether the viewer is the owner (shows admin
+// toggles).
 router.get("/admin/account-info", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
+  const [viewer] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId!));
   const users = await db.select().from(usersTable).where(eq(usersTable.isVirtual, false));
-  const info: Record<number, { missing: string[] }> = {};
+  const info: Record<number, { missing: string[]; banned: boolean; appealStatus: string; appealText: string | null; isAdmin: boolean; isOwner: boolean }> = {};
   for (const u of users) {
     const missing: string[] = [];
     if (!u.cid) missing.push("CID");
     if (!u.discordId) missing.push("Discord");
     if (!u.simbriefUsername) missing.push("SimBrief");
-    info[u.id] = { missing };
+    info[u.id] = {
+      missing, banned: u.banned, appealStatus: u.appealStatus, appealText: u.appealText,
+      isAdmin: u.isAdmin === "true", isOwner: u.isOwner,
+    };
   }
-  res.json({ info });
+  res.json({ info, viewerIsOwner: !!viewer?.isOwner });
 });
 
 // Re-run the application backfill on demand (also runs on boot).
@@ -111,6 +117,52 @@ router.post("/admin/backfill-info", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const filled = await backfillFromApplications();
   res.json({ ok: true, filled });
+});
+
+// ── Ban / appeal ─────────────────────────────────────────────────────────────
+async function loadTarget(req: any, res: any): Promise<typeof usersTable.$inferSelect | null> {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid user ID" }); return null; }
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!u) { res.status(404).json({ error: "User not found" }); return null; }
+  return u;
+}
+
+router.post("/admin/users/:id/ban", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const u = await loadTarget(req, res); if (!u) return;
+  if (u.id === req.session.userId) { res.status(400).json({ error: "You can't ban yourself." }); return; }
+  if (u.isOwner) { res.status(400).json({ error: "The owner can't be banned." }); return; }
+  const reason = String(req.body?.reason || "").trim().slice(0, 500) || "No reason provided.";
+  await db.update(usersTable).set({ banned: true, banReason: reason, appealStatus: "none", appealText: null }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true });
+});
+
+router.post("/admin/users/:id/unban", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const u = await loadTarget(req, res); if (!u) return;
+  await db.update(usersTable).set({ banned: false, banReason: null, appealStatus: "none", appealText: null }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true });
+});
+
+router.post("/admin/users/:id/deny-appeal", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const u = await loadTarget(req, res); if (!u) return;
+  await db.update(usersTable).set({ appealStatus: "denied" }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true });
+});
+
+// ── Owner-only: add / remove admin on another account ───────────────────────
+router.post("/admin/users/:id/admin", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const [viewer] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId!));
+  if (!viewer?.isOwner) { res.status(403).json({ error: "Only the owner can change admin access." }); return; }
+  const u = await loadTarget(req, res); if (!u) return;
+  if (u.id === viewer.id) { res.status(400).json({ error: "You can't change your own admin status." }); return; }
+  if (u.isOwner) { res.status(400).json({ error: "Can't change the owner's admin status." }); return; }
+  const makeAdmin = !!req.body?.isAdmin;
+  await db.update(usersTable).set({ isAdmin: makeAdmin ? "true" : "false" }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true });
 });
 
 router.get("/admin/users", async (req, res): Promise<void> => {
@@ -293,10 +345,13 @@ router.delete("/admin/users/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "User not found" });
     return;
   }
+  if (user.isOwner) {
+    res.status(400).json({ error: "The owner account can't be deleted." });
+    return;
+  }
 
-  // Also delete their timetable entries
-  await db.delete(timetableTable).where(eq(timetableTable.userId, id));
-  await db.delete(usersTable).where(eq(usersTable.id, id));
+  // Delete the user and everything that references them (FK-safe).
+  await deleteUserCascade(id);
 
   res.sendStatus(204);
 });
