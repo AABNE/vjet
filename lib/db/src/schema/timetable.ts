@@ -8,7 +8,7 @@ export const timetableTable = pgTable("timetable", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id),
   flightId: integer("flight_id").notNull().references(() => flightsTable.id),
-  // "pending" | "active" | "completed" | "flagged"
+  // "pending" | "active" | "completed" | "flagged" | "cancelled"
   status: text("status").notNull().default("pending"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
@@ -21,6 +21,11 @@ export const timetableTable = pgTable("timetable", {
   briefing: text("briefing"), // JSON string of the imported SimBrief briefing
   pushbackViolation: boolean("pushback_violation").notNull().default(false),
   noShowNotified: boolean("no_show_notified").notNull().default(false),
+  // Autonomous "virtual" operation (nobody picked the flight up). The engine
+  // stores the randomised actual departure/arrival instants it flies to.
+  isVirtual: boolean("is_virtual").notNull().default(false),
+  virtualDepAt: timestamp("virtual_dep_at", { withTimezone: true }),
+  virtualArrAt: timestamp("virtual_arr_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

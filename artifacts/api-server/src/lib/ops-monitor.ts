@@ -15,6 +15,7 @@ import { notify } from "./ops";
 import { refreshAirports, getWeather, isAdverse } from "./weather";
 import { opsManagerReview } from "./approvals";
 import { maintenanceTick } from "./maintenance";
+import { virtualOpsTick } from "./virtual-ops";
 
 const TICK_MS = 10_000;
 
@@ -160,6 +161,8 @@ async function weatherTick(): Promise<void> {
 
 async function tick(): Promise<void> {
   if (await isPaused("global")) return;
+  // Fly unclaimed sectors first so they enter tracking alongside human flights.
+  await virtualOpsTick();
   await flightMonitorTick();
   await dispatchTick();
   await fleetTick();

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import {
-  db, eq, and, desc, asc, inArray, sql,
+  db, eq, and, desc, asc, inArray, sql, gte, lte,
   usersTable, flightsTable, timetableTable,
   aircraftTable, aircraftAssignmentsTable, delayReportsTable,
   maintenanceReportsTable, maintenanceJobsTable, partsInventoryTable,
@@ -12,8 +12,9 @@ import {
 } from "../lib/ops-core";
 import { collectTracking } from "../lib/tracking";
 import { applyHold, clearHold, assignAircraft, findReplacement, sectorsForRegistration, notifyPilot, reassignOrCancel } from "../lib/fleet";
-import { getConfig, setConfig, listModels, usageStats, isValidModel } from "../lib/ai";
-import { getMany, toIcao } from "../lib/weather";
+import { getConfig, setConfig, listModels, usageStats, isValidModel, aiComplete } from "../lib/ai";
+import { getMany, toIcao, isAdverse } from "../lib/weather";
+import { AIRPORT_COORDS } from "../data/airport-coords";
 import { applyApproval } from "../lib/approvals";
 import { hubConnected, hubRequired } from "../lib/ops";
 import { MAINT_MINUTE_MS, skipDelivery, setSetting } from "../lib/maintenance";
@@ -125,6 +126,58 @@ router.get("/ops/weather", async (req, res): Promise<void> => {
   const codes = String(req.query.codes || "").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean).slice(0, 20);
   if (codes.length === 0) { res.json({ reports: {} }); return; }
   res.json({ reports: await getMany(codes) });
+});
+
+// ── Weather outlook for the ops radar: network airports + AI delay forecast ──
+const OUTLOOK_HUBS = ["BNE", "SYD", "MEL", "PER", "ADL", "OOL", "CNS", "HBA", "CBR", "AKL"];
+let outlookCache: { at: number; data: unknown } | null = null;
+router.get("/ops/weather-outlook", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  // Serve a short cache so the dashboard polling doesn't hammer the AI/provider.
+  if (outlookCache && Date.now() - outlookCache.at < 4 * 60_000) { res.json(outlookCache.data); return; }
+
+  const now = new Date();
+  // Airports in play over the next few hours, plus the main hubs.
+  const soon = await db.select().from(flightsTable).where(and(
+    gte(flightsTable.departsAt, new Date(now.getTime() - 60 * 60_000)),
+    lte(flightsTable.departsAt, new Date(now.getTime() + 6 * 60 * 60_000)),
+  ));
+  const codes = [...new Set([...OUTLOOK_HUBS, ...soon.flatMap((f) => [f.departure, f.arrival])])]
+    .filter((c) => AIRPORT_COORDS[c]).slice(0, 18);
+  const reports = await getMany(codes);
+
+  const airports = codes.map((code) => {
+    const w = reports[code] ?? reports[toIcao(code) ?? ""];
+    const adv = w ? isAdverse(w) : { adverse: false, reasons: [] as string[] };
+    const [lat, lon] = AIRPORT_COORDS[code];
+    return {
+      code, lat, lon,
+      name: w?.name ?? null,
+      adverse: adv.adverse, reasons: adv.reasons,
+      metar: w?.metarRaw ?? null,
+      freshness: w?.freshness ?? "unavailable",
+    };
+  });
+
+  const bad = airports.filter((a) => a.adverse);
+  let outlook: string;
+  const fallback = bad.length
+    ? `Weather delays likely at ${bad.map((a) => a.code).join(", ")} — ${bad.map((a) => a.reasons.join("/")).join("; ")}.`
+    : "No significant weather affecting the network — operations should run to schedule.";
+  if (bad.length) {
+    const prompt = `You are an airline ops meteorologist. Network airports with adverse weather right now:\n${bad.map((a) => `${a.code}: ${a.reasons.join(", ")} — ${a.metar ?? ""}`).join("\n")}\nIn 1-2 short sentences, say where and why delays are likely today. No preamble.`;
+    const r = await aiComplete("reporting", [
+      { role: "system", content: "You are a concise airline operations weather forecaster." },
+      { role: "user", content: prompt },
+    ]);
+    outlook = r.ok && r.text ? r.text.slice(0, 400) : fallback;
+  } else {
+    outlook = fallback;
+  }
+
+  const data = { generatedAt: now.toISOString(), airports, outlook, adverseCount: bad.length };
+  outlookCache = { at: Date.now(), data };
+  res.json(data);
 });
 
 // ── Aircraft registration assigned to the pilot's own sectors ───────────────

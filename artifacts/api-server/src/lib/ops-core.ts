@@ -23,6 +23,7 @@ export const AGENTS: { key: string; name: string; responsibility: string; model:
   { key: "dispatch", name: "Dispatch", responsibility: "Reviews dispatch records, flags missing info/holds, blocks not-ready flights.", model: "rule-based" },
   { key: "comms", name: "Discord Communications", responsibility: "Sends approved notifications, records delivery, prevents duplicates.", model: "rule-based" },
   { key: "reporting", name: "Reporting", responsibility: "Produces operations summaries of delays, utilisation, maintenance and changes.", model: "openrouter:gemma" },
+  { key: "auto-ops", name: "Autonomous Operations", responsibility: "Flies sectors no pilot picked up — randomised on-time performance, weather routing and occasional cancellations — so the schedule completes.", model: "rule-based" },
 ];
 export const AGENT_KEYS = AGENTS.map((a) => a.key);
 

@@ -28,6 +28,9 @@ export const usersTable = pgTable("users", {
   // When true, Available routes only shows flights departing where the pilot's
   // last flight landed (realistic sequential routing).
   routeContinuity: boolean("route_continuity").notNull().default(false),
+  // System "virtual pilots" that fly the schedule when no human picks a flight
+  // up. Hidden from the human roster; the ops layer treats them like any pilot.
+  isVirtual: boolean("is_virtual").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

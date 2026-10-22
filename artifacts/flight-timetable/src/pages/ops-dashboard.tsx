@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/components/auth-provider";
 import { apiGet } from "@/lib/api";
-import { Plane, AlertTriangle, Wrench, ShieldCheck, Radio, Gauge, ArrowRight, Bot } from "lucide-react";
+import { Plane, AlertTriangle, Wrench, ShieldCheck, Radio, Gauge, ArrowRight, Bot, CloudRain, CloudSun } from "lucide-react";
 
 interface Track { flightNumber: string; departure: string; arrival: string; pilotUsername: string; provider: string; status: string; trackingStatus: string; delayMinutes: number | null; }
 interface Overview {
@@ -117,6 +118,128 @@ export default function OpsDashboard() {
           </div>
         </aside>
       </div>
+
+      <WeatherSection />
     </div>
+  );
+}
+
+// ── Weather radar + AI delay outlook ─────────────────────────────────────────
+interface OutlookAirport { code: string; lat: number; lon: number; name: string | null; adverse: boolean; reasons: string[]; metar: string | null; freshness: string }
+interface Outlook { generatedAt: string; airports: OutlookAirport[]; outlook: string; adverseCount: number }
+
+// Load Leaflet (CSS + JS) from a CDN once, resolving when window.L is ready.
+let leafletPromise: Promise<any> | null = null;
+function loadLeaflet(): Promise<any> {
+  if ((window as any).L) return Promise.resolve((window as any).L);
+  if (leafletPromise) return leafletPromise;
+  leafletPromise = new Promise((resolve, reject) => {
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(css);
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    s.async = true;
+    s.onload = () => resolve((window as any).L);
+    s.onerror = () => reject(new Error("leaflet failed to load"));
+    document.head.appendChild(s);
+  });
+  return leafletPromise;
+}
+
+function WeatherSection() {
+  const q = useQuery<Outlook>({ queryKey: ["weather-outlook"], queryFn: () => apiGet("/api/ops/weather-outlook"), refetchInterval: 4 * 60_000, retry: false });
+  const mapEl = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any>(null);
+  const radarRef = useRef<any>(null);
+  const airports = q.data?.airports ?? [];
+
+  // Init the Leaflet map + animated RainViewer radar once.
+  useEffect(() => {
+    let cancelled = false;
+    let anim: ReturnType<typeof setInterval> | null = null;
+    loadLeaflet().then((L) => {
+      if (cancelled || !mapEl.current || mapRef.current) return;
+      const map = L.map(mapEl.current, { zoomControl: true, attributionControl: false }).setView([-27, 140], 4);
+      mapRef.current = map;
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 10, subdomains: "abcd" }).addTo(map);
+      markersRef.current = L.layerGroup().addTo(map);
+
+      // RainViewer precipitation radar — animate the last few frames.
+      fetch("https://api.rainviewer.com/public/weather-maps.json")
+        .then((r) => r.json())
+        .then((data: any) => {
+          if (cancelled) return;
+          const host = data.host as string;
+          const frames: { path: string }[] = (data.radar?.past ?? []).slice(-6);
+          if (!frames.length) return;
+          let i = frames.length - 1;
+          const show = (idx: number) => {
+            const layer = L.tileLayer(`${host}${frames[idx].path}/256/{z}/{x}/{y}/4/1_1.png`, { opacity: 0.6, maxZoom: 10 });
+            layer.addTo(map);
+            const prev = radarRef.current;
+            radarRef.current = layer;
+            if (prev) setTimeout(() => map.removeLayer(prev), 200);
+          };
+          show(i);
+          anim = setInterval(() => { i = (i + 1) % frames.length; show(i); }, 700);
+        })
+        .catch(() => { /* radar overlay optional */ });
+    }).catch(() => { /* leaflet optional */ });
+    return () => { cancelled = true; if (anim) clearInterval(anim); if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
+  }, []);
+
+  // Redraw airport markers whenever the outlook refreshes.
+  useEffect(() => {
+    const L = (window as any).L;
+    if (!L || !markersRef.current) return;
+    markersRef.current.clearLayers();
+    for (const a of airports) {
+      const color = a.adverse ? "#ef4444" : a.freshness === "unavailable" ? "#9ca3af" : "#10b981";
+      const m = L.circleMarker([a.lat, a.lon], { radius: a.adverse ? 7 : 5, color, weight: 2, fillColor: color, fillOpacity: a.adverse ? 0.7 : 0.4 });
+      m.bindPopup(`<b>${a.code}</b>${a.name ? ` — ${a.name}` : ""}<br>${a.adverse ? `⚠ ${a.reasons.join(", ")}` : "No significant weather"}${a.metar ? `<br><span style="font-family:monospace;font-size:10px">${a.metar}</span>` : ""}`);
+      markersRef.current.addLayer(m);
+    }
+  }, [airports]);
+
+  const bad = airports.filter((a) => a.adverse);
+
+  return (
+    <section className="mt-8">
+      <h2 className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[.2em] text-[#6b7280]"><CloudRain className="h-4 w-4 text-[#fb5713]" />Weather radar</h2>
+      <div className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white">
+        <div ref={mapEl} className="h-80 w-full" style={{ background: "#eef2f6" }} />
+        <div className="flex flex-wrap items-center gap-3 border-t border-[#f3f4f6] px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-[#9ca3af]">
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />clear</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" />adverse</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#9ca3af]" />no data</span>
+          <span className="ml-auto normal-case">Precip radar · RainViewer</span>
+        </div>
+      </div>
+
+      {/* AI delay outlook */}
+      <div className="mt-3 rounded-2xl border border-[#e5e7eb] bg-white p-4">
+        <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[.16em] text-[#9ca3af]">
+          <Bot className="h-3.5 w-3.5 text-[#fb5713]" />Weather delay outlook
+        </div>
+        <p className="mt-2 text-sm leading-snug text-[#1a1a1a]">
+          {q.isLoading ? "Checking the network…" : (q.data?.outlook ?? "Weather outlook unavailable.")}
+        </p>
+        {bad.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {bad.map((a) => (
+              <span key={a.code} className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                <AlertTriangle className="h-3 w-3" />{a.code} · {a.reasons.join(", ")}
+              </span>
+            ))}
+          </div>
+        )}
+        {q.data && bad.length === 0 && (
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700"><CloudSun className="h-3.5 w-3.5" />Network clear</div>
+        )}
+      </div>
+    </section>
   );
 }

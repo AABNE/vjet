@@ -36,6 +36,7 @@ export async function initDb(): Promise<void> {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "route_continuity" BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_url" TEXT;
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "cid" TEXT;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_virtual" BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS "flights" (
         "id"               SERIAL PRIMARY KEY,
@@ -73,6 +74,9 @@ export async function initDb(): Promise<void> {
       ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "briefing" TEXT;
       ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "pushback_violation" BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "no_show_notified" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "is_virtual" BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "virtual_dep_at" TIMESTAMPTZ;
+      ALTER TABLE "timetable" ADD COLUMN IF NOT EXISTS "virtual_arr_at" TIMESTAMPTZ;
 
       CREATE TABLE IF NOT EXISTS "session" (
         "sid"    VARCHAR NOT NULL COLLATE "default",

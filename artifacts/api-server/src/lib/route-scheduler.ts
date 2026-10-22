@@ -247,8 +247,16 @@ async function tick(): Promise<void> {
 
   // Prune flights that are no longer part of the schedule (stale day, past the
   // cutoff, or a removed route) and aren't protected by a timetable entry.
+  // Keep near-term flights (just inside the pickup cutoff through recently
+  // departed) alive so virtual-ops can claim and fly the ones no pilot took.
+  const liveFrom = now.getTime() - 3 * 60 * 60_000;   // up to 3h after departure
+  const liveTo = now.getTime() + 45 * 60_000;         // up to 45 min before
+  const inLiveWindow = (f: typeof existing[number]) => {
+    const t = f.departsAt ? f.departsAt.getTime() : departureInstant(f as any).getTime();
+    return t >= liveFrom && t <= liveTo;
+  };
   const toDelete = existing
-    .filter((f) => !protectedIds.has(f.id) && !desired.has(keyOf(f.flightNumber, f.flightDate)))
+    .filter((f) => !protectedIds.has(f.id) && !desired.has(keyOf(f.flightNumber, f.flightDate)) && !inLiveWindow(f))
     .map((f) => f.id);
 
   for (let i = 0; i < toDelete.length; i += 200) {
