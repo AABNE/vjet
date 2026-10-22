@@ -6,6 +6,15 @@ import { Plane, Loader2, Plus } from "lucide-react";
 
 interface Ac { registration: string; type: string; status: string; note: string | null; base: string | null; assigned: boolean }
 const TYPES = ["A320", "A321", "A20N", "A21N", "B788"];
+
+// Pre-loads SimBrief's aircraft/airframe options for one tail (type + rego, no
+// route or schedule) so the pilot can save it as an airframe — not a flight.
+function airframeUrl(type: string, reg: string) {
+  const params = new URLSearchParams({ airline: "JST", type, reg });
+  const fin = reg.replace(/[^A-Za-z0-9]/g, "").slice(-3).toUpperCase();
+  if (fin) params.set("fin", fin);
+  return `https://dispatch.simbrief.com/options/custom?${params.toString()}`;
+}
 const STATUS_STYLE: Record<string, string> = { active: "bg-emerald-50 text-emerald-700", maintenance_hold: "bg-red-100 text-red-700", grounded: "bg-[#f3f4f6] text-[#6b7280]" };
 
 export default function Fleet() {
@@ -132,6 +141,11 @@ export default function Fleet() {
                   <div key={a.registration} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 py-2.5">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-bold text-[#1a1a1a]">{a.registration}</span>
+                      <a href={airframeUrl(a.type, a.registration)} target="_blank" rel="noopener noreferrer"
+                        title={`Add airframe ${a.registration} to SimBrief`}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6b7280] transition hover:border-[#fb5713] hover:text-[#fb5713]">
+                        <Plane className="h-3 w-3" />
+                      </a>
                       <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${STATUS_STYLE[a.status] ?? "bg-[#f3f4f6] text-[#6b7280]"}`}>{a.status.replace(/_/g, " ")}</span>
                       {a.base && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-indigo-700">Reserve · {a.base}</span>}
                       {a.assigned && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-sky-700">In use</span>}
