@@ -152,6 +152,17 @@ router.post("/admin/users/:id/deny-appeal", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
+// Admin sets a pilot's password (they're prompted to change it next login).
+router.post("/admin/users/:id/password", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const u = await loadTarget(req, res); if (!u) return;
+  const pw = String(req.body?.password || "");
+  if (pw.length < 8) { res.status(400).json({ error: "Password must be at least 8 characters." }); return; }
+  const hash = await bcrypt.hash(pw, 12);
+  await db.update(usersTable).set({ passwordHash: hash, mustChangePassword: "true" }).where(eq(usersTable.id, u.id));
+  res.json({ ok: true });
+});
+
 // ── Owner-only: add / remove admin on another account ───────────────────────
 router.post("/admin/users/:id/admin", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;

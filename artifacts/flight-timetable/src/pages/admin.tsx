@@ -134,6 +134,13 @@ export default function Admin() {
     await apiPost(`/api/admin/users/${id}/admin`, { isAdmin: makeAdmin }).catch((e: any) => window.alert(e?.message || "Couldn't change admin access."));
     refreshAccounts();
   }
+  async function resetPilotPassword(id: number) {
+    const pw = window.prompt("New password for this pilot (min 8 characters). They'll be asked to change it on their next login:");
+    if (pw === null) return;
+    if (pw.length < 8) { window.alert("Password must be at least 8 characters."); return; }
+    try { await apiPost(`/api/admin/users/${id}/password`, { password: pw }); window.alert("Password updated."); }
+    catch (e: any) { window.alert(e?.message || "Couldn't set the password."); }
+  }
 
   const toggle = (code: AircraftType) =>
     setAircraft((prev) =>
@@ -706,6 +713,7 @@ export default function Admin() {
               onUnban={() => unbanUser(p.id)}
               onDenyAppeal={() => denyAppeal(p.id)}
               onToggleAdmin={(makeAdmin) => toggleAdmin(p.id, makeAdmin)}
+              onSetPassword={() => resetPilotPassword(p.id)}
               onSave={(id, data) => update.mutate({ id, data })}
               onDelete={(id) => {
                 if (window.confirm(`Remove pilot ${p.username}?`)) {
@@ -815,6 +823,7 @@ function PilotRow({
   onUnban,
   onDenyAppeal,
   onToggleAdmin,
+  onSetPassword,
   onSave,
   onDelete,
   busy,
@@ -828,6 +837,7 @@ function PilotRow({
   onUnban?: () => void;
   onDenyAppeal?: () => void;
   onToggleAdmin?: (makeAdmin: boolean) => void;
+  onSetPassword?: () => void;
   onSave: (id: number, data: any) => void;
   onDelete: (id: number) => void;
   busy: boolean;
@@ -915,6 +925,10 @@ function PilotRow({
               <button type="button" onClick={onBan} disabled={busy}
                 className="rounded-xl border border-amber-200 px-3 py-2 text-[9px] font-bold uppercase text-amber-700 transition hover:bg-amber-50 disabled:opacity-50">Ban</button>
             )
+          )}
+          {onSetPassword && (
+            <button type="button" onClick={onSetPassword} disabled={busy}
+              className="rounded-xl border border-[#e5e7eb] px-3 py-2 text-[9px] font-bold uppercase text-[#6b7280] transition hover:bg-[#f3f4f6] disabled:opacity-50">Set password</button>
           )}
           <button
             type="button"
