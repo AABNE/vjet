@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, timetableTable, flightsTable, userReportsTable, eq, ne, desc } from "@workspace/db";
-import { addInfraction, notify } from "../lib/ops";
+import { notify } from "../lib/ops";
 import { listSessionsForAdmin } from "../lib/cockpit";
 import { backfillFromApplications, deleteUserCascade } from "../lib/account-info";
 
@@ -454,11 +454,9 @@ router.post("/admin/flagged/:id/reject", async (req, res): Promise<void> => {
     return;
   }
 
-  // Record an infraction against the pilot before removing the rejected flight.
   const [flight] = await db.select().from(flightsTable).where(eq(flightsTable.id, entry.flightId));
   const label = flight ? `${flight.flightNumber} (${flight.departure}→${flight.arrival})` : `flight #${entry.flightId}`;
   await notify(entry.userId, "ops", "Flight rejected", `Your flagged flight ${label} was reviewed and rejected by an admin.`);
-  await addInfraction(entry.userId, "flight_rejected", `Flagged flight ${label} rejected by admin`);
 
   // Delete the entry entirely — no hours credited, gone from logs
   await db.delete(timetableTable).where(eq(timetableTable.id, id));
@@ -514,8 +512,8 @@ router.get("/admin/reports/:id/audio", async (req, res): Promise<void> => {
   res.send(Buffer.from(m[2], "base64"));
 });
 
-// Resolve a report. action "strike" records an infraction against the pilot;
-// "dismiss" just closes it. Both mark it handled.
+// Close a pilot report. action "resolve" marks it handled; anything else
+// dismisses it. Either way it's cleared from the open list.
 router.post("/admin/reports/:id/resolve", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const id = parseInt(req.params.id, 10);
@@ -525,11 +523,8 @@ router.post("/admin/reports/:id/resolve", async (req, res): Promise<void> => {
   const [report] = await db.select().from(userReportsTable).where(eq(userReportsTable.id, id));
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
 
-  if (action === "strike") {
-    await addInfraction(report.reportedId, "reported", `Pilot report upheld: ${report.reason}`);
-  }
   await db.update(userReportsTable)
-    .set({ status: action === "strike" ? "resolved" : "dismissed", resolvedAt: new Date() })
+    .set({ status: action === "resolve" ? "resolved" : "dismissed", resolvedAt: new Date() })
     .where(eq(userReportsTable.id, id));
 
   res.json({ ok: true });

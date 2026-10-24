@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import { db, notificationsTable, eq, and, isNull, desc } from "@workspace/db";
-import { getDiscipline, recentInfractions, getBan } from "../lib/ops";
 
 const router: IRouter = Router();
 
@@ -31,23 +30,6 @@ router.post("/notifications/read-all", async (req, res): Promise<void> => {
     .set({ readAt: new Date() })
     .where(and(eq(notificationsTable.userId, req.session.userId), isNull(notificationsTable.readAt)));
   res.json({ ok: true });
-});
-
-// GET /api/pilot/record — the pilot's discipline standing + recent infractions.
-router.get("/pilot/record", async (req, res): Promise<void> => {
-  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const userId = req.session.userId;
-  const d = await getDiscipline(userId);
-  const ban = await getBan(userId);
-  const log = await recentInfractions(userId, 20);
-  res.json({
-    periodKey: d.periodKey,
-    infractions: d.infractions,
-    strikes: d.strikes,
-    banLevel: d.banLevel,
-    ban: { banned: ban.banned, until: ban.until ? ban.until.toISOString() : null },
-    history: log.map((i) => ({ type: i.type, reason: i.reason, createdAt: i.createdAt.toISOString() })),
-  });
 });
 
 export default router;

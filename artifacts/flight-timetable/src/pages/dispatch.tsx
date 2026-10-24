@@ -20,7 +20,6 @@ interface DispatchEntry {
   flight: { flightNumber: string; departure: string; arrival: string; aircraft: string; departureTime: string; flightDate: string; durationMinutes: number };
 }
 interface DispatchState { ban: { banned: boolean; until: string | null }; entry: DispatchEntry | null; }
-interface PilotRecord { periodKey: string; infractions: number; strikes: number; banLevel: number; ban: { banned: boolean; until: string | null }; history: { type: string; reason: string; createdAt: string }[]; }
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -39,7 +38,7 @@ function buildSystemPrompt(user: any, entry: DispatchEntry | null, dispatcher: s
   L.push("- They import their SimBrief plan → you've got their briefing.");
   L.push("- They request dispatch → you approve them.");
   L.push("- They request clearance → you clear them to push and start.");
-  L.push("- Pushing back before you've cleared them is logged as an infraction, so remind them to get cleared first.");
+  L.push("- Pushing back before you've cleared them is noted, so remind them to get cleared first.");
   L.push("If they tell you they've diverted or can't make a flight, react like a real dispatcher: acknowledge it, tell them you'll sort their roster, and give them a new plan — e.g. assign a new routing and tell them to import SimBrief again and call you back.");
   L.push("You are company ops, not ATC — don't invent ATC clearances, squawks or frequencies.");
   L.push("");
@@ -77,7 +76,6 @@ export default function Dispatch() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const state = useQuery<DispatchState>({ queryKey: ["dispatch-state"], queryFn: () => apiGet("/api/dispatch/state"), refetchInterval: 15_000, retry: false });
-  const record = useQuery<PilotRecord>({ queryKey: ["pilot-record"], queryFn: () => apiGet("/api/pilot/record"), refetchInterval: 30_000, retry: false });
   const voiceStatus = useQuery<{ configured: boolean }>({ queryKey: ["voice-status"], queryFn: () => apiGet("/api/dispatch/voice-status"), retry: false });
 
   const entry = state.data?.entry ?? null;
@@ -243,7 +241,7 @@ export default function Dispatch() {
         <p className="font-mono text-[10px] font-semibold uppercase tracking-[.2em] text-[#fb5713]">Operations · ground</p>
         <h1 className="mt-2 text-5xl font-black uppercase leading-none tracking-tight text-[#1a1a1a] md:text-6xl">Dispatch</h1>
         <p className="mt-3 max-w-2xl text-sm text-[#6b7280]">
-          Your company ops desk. Import your SimBrief plan to get a briefing, then <b>request dispatch</b> and <b>request clearance</b> before you push back. Push before you're cleared and it's logged as an infraction. Call dispatch or message them — they remember your conversation.
+          Your company ops desk. Import your SimBrief plan to get a briefing, then <b>request dispatch</b> and <b>request clearance</b> before you push back. Push before you're cleared and it's noted. Call dispatch or message them — they remember your conversation.
         </p>
       </div>
 
@@ -375,27 +373,6 @@ export default function Dispatch() {
             ) : (
               <p className="mt-3 text-sm text-[#6b7280]">No active or upcoming sector. Pick up a flight from <span className="font-bold text-[#fb5713]">Available routes</span> first.</p>
             )}
-          </div>
-
-          <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-            <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[.18em] text-[#9ca3af]"><ShieldAlert className="h-3.5 w-3.5 text-[#fb5713]" />Your record · this month</div>
-            {record.data ? (
-              <>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-xl bg-[#f9fafb] py-2"><div className="text-xl font-black text-[#1a1a1a]">{record.data.infractions}<span className="text-xs text-[#9ca3af]">/3</span></div><div className="font-mono text-[8px] uppercase tracking-wider text-[#9ca3af]">Infractions</div></div>
-                  <div className="rounded-xl bg-[#f9fafb] py-2"><div className="text-xl font-black text-[#1a1a1a]">{record.data.strikes}<span className="text-xs text-[#9ca3af]">/3</span></div><div className="font-mono text-[8px] uppercase tracking-wider text-[#9ca3af]">Strikes</div></div>
-                  <div className="rounded-xl bg-[#f9fafb] py-2"><div className={`text-xl font-black ${record.data.ban.banned ? "text-red-600" : "text-[#1a1a1a]"}`}>{record.data.ban.banned ? "ON" : "—"}</div><div className="font-mono text-[8px] uppercase tracking-wider text-[#9ca3af]">Ban</div></div>
-                </div>
-                <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">3 infractions = 1 strike. 3 strikes = a ban (1h, then doubling). Resets at month start.</p>
-                {record.data.history.length > 0 && (
-                  <div className="mt-3 space-y-1.5 border-t border-[#f3f4f6] pt-3">
-                    {record.data.history.slice(-4).reverse().map((h, i) => (
-                      <div key={i} className="text-[11px] text-[#6b7280]"><span className="text-[#9ca3af]">{new Date(h.createdAt).toLocaleDateString()}</span> — {h.reason}</div>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : <p className="mt-3 text-sm text-[#6b7280]">Clean record.</p>}
           </div>
 
           {voiceWarn && (

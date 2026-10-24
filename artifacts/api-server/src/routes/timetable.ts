@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
-import { getBan, hubConnected, hubRequired } from "../lib/ops";
+import { isUserBanned, hubConnected, hubRequired } from "../lib/ops";
 import { findBookingConflict, conflictMessage } from "../lib/booking";
 
 import {
@@ -253,9 +253,8 @@ router.post("/timetable/:id/start", async (req, res): Promise<void> => {
     return;
   }
 
-  const ban = await getBan(req.session.userId);
-  if (ban.banned) {
-    res.status(403).json({ error: `You're grounded until ${ban.until?.toUTCString()}. Flights are locked while suspended.`, bannedUntil: ban.until?.toISOString() });
+  if (await isUserBanned(req.session.userId)) {
+    res.status(403).json({ error: "Your account is suspended." });
     return;
   }
 

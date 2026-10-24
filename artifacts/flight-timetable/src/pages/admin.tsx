@@ -1027,7 +1027,7 @@ function ReportsPanel() {
   const reports = q.data?.reports ?? [];
   const open = reports.filter((r) => r.status === "open");
 
-  async function resolve(id: number, action: "strike" | "dismiss") {
+  async function resolve(id: number, action: "resolve" | "dismiss") {
     setBusy(id);
     try { await apiPost(`/api/admin/reports/${id}/resolve`, { action }); await q.refetch(); }
     finally { setBusy(null); }
@@ -1040,7 +1040,7 @@ function ReportsPanel() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500 text-white"><Flag className="h-5 w-5" /></div>
           <div>
             <h2 className="font-bold uppercase tracking-tight text-red-900">Pilot reports</h2>
-            <p className="text-[10px] text-red-500">{open.length} open · {reports.length} total — strike records an infraction, dismiss closes it.</p>
+            <p className="text-[10px] text-red-500">{open.length} open · {reports.length} total — review a pilot and ban them if needed, then close the report.</p>
           </div>
         </div>
         <button onClick={() => q.refetch()} className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-red-600 hover:bg-red-50">Refresh</button>
@@ -1068,8 +1068,8 @@ function ReportsPanel() {
               </div>
               {r.status === "open" && (
                 <div className="flex gap-2">
-                  <button onClick={() => resolve(r.id, "strike")} disabled={busy === r.id}
-                    className="rounded-lg bg-red-500 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-600 disabled:opacity-50">Strike</button>
+                  <button onClick={() => resolve(r.id, "resolve")} disabled={busy === r.id}
+                    className="rounded-lg bg-[#1a1a1a] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-black disabled:opacity-50">Resolve</button>
                   <button onClick={() => resolve(r.id, "dismiss")} disabled={busy === r.id}
                     className="rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50">Dismiss</button>
                 </div>

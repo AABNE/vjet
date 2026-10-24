@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { db, timetableTable, flightsTable, usersTable, eq, and } from "@workspace/db";
 import { fetchSimbriefBriefing, SimbriefError, type SimbriefBriefing } from "../lib/simbrief";
-import { notify, getBan, addInfraction, hubConnected, hubRequired } from "../lib/ops";
+import { notify, isUserBanned, hubConnected, hubRequired } from "../lib/ops";
 import { aiComplete } from "../lib/ai";
 
 const router: IRouter = Router();
@@ -99,10 +99,10 @@ function publicEntry(entry: typeof timetableTable.$inferSelect, flight: typeof f
 // GET /api/dispatch/state — the pilot's current flight + dispatch status + ban.
 router.get("/dispatch/state", async (req, res): Promise<void> => {
   const user = await requireUser(req, res); if (!user) return;
-  const ban = await getBan(user.id);
+  const banned = await isUserBanned(user.id);
   const cur = await currentEntry(user.id);
   res.json({
-    ban: { banned: ban.banned, until: ban.until ? ban.until.toISOString() : null },
+    ban: { banned, until: null },
     entry: cur ? publicEntry(cur.entry, cur.flight) : null,
   });
 });
@@ -167,9 +167,8 @@ router.post("/dispatch/:id/request", async (req, res): Promise<void> => {
   const [flight] = await db.select().from(flightsTable).where(eq(flightsTable.id, entry.flightId));
   if (!flight) { res.status(404).json({ error: "Flight not found" }); return; }
 
-  const ban = await getBan(user.id);
-  if (ban.banned) {
-    res.status(403).json({ error: `You're grounded until ${ban.until?.toUTCString()}.`, bannedUntil: ban.until?.toISOString() });
+  if (await isUserBanned(user.id)) {
+    res.status(403).json({ error: "Your account is suspended." });
     return;
   }
 
@@ -218,9 +217,8 @@ router.post("/dispatch/:id/pushback", async (req, res): Promise<void> => {
   const [flight] = await db.select().from(flightsTable).where(eq(flightsTable.id, entry.flightId));
   if (!flight) { res.status(404).json({ error: "Flight not found" }); return; }
 
-  const ban = await getBan(user.id);
-  if (ban.banned) {
-    res.status(403).json({ error: `You're grounded until ${ban.until?.toUTCString()}.`, bannedUntil: ban.until?.toISOString() });
+  if (await isUserBanned(user.id)) {
+    res.status(403).json({ error: "Your account is suspended." });
     return;
   }
 
@@ -234,9 +232,7 @@ router.post("/dispatch/:id/pushback", async (req, res): Promise<void> => {
     violation = true;
     await db.update(timetableTable).set({ pushbackViolation: true }).where(eq(timetableTable.id, entry.id));
     await notify(user.id, "ops", `Pushed back without clearance — ${flight.flightNumber}`,
-      `You started moving before dispatch cleared you. This is an infraction.`);
-    await addInfraction(user.id, "pushback_no_clearance",
-      `Pushed back before clearance on ${flight.flightNumber} (${flight.departure}→${flight.arrival})`);
+      `You started moving before dispatch cleared you — please request clearance first next time.`);
   }
 
   const [updated] = await db.update(timetableTable)
